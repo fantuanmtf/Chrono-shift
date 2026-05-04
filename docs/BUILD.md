@@ -35,8 +35,21 @@ cmake --build build -j$(nproc)
 # 运行
 ./build/chrono-client.exe
 ```
+
 ## Linux 构建 (GCC)
 ```bash
+#依赖(Debian Family)
+sudo apt install cargo rustup gcc gdb cmake make build-essential nasm libssl-dev openssl git
+
+# 编译 Rust 安全库
+cd client/security
+cargo build --release
+
+# 编译 NASM 汇编
+cd client/security/asm
+nasm -f win64 obfuscate.asm -o obfuscate.obj
+
+# 构建C++客户端
 cd client
 cmake -B build -G "Unix Makefiles"
 cmake --build build -j$(nproc)
