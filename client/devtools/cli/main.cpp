@@ -374,9 +374,9 @@ int main(int argc, char** argv)
         mgr.load_state("./data");
         mgr.cleanup_expired_blocks();
 
-        // 尝试自动连接 Tor (默认传输层)
-        extern void try_auto_connect_tor();
-        try_auto_connect_tor();
+        // 自动启动 i2pd (默认传输层), Tor 通过 CLI 手动切换
+        extern void try_auto_connect_i2p();
+        try_auto_connect_i2p();
 
         auto pending = mgr.pending_requests();
         if (!pending.empty()) {

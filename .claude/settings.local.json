@@ -57,7 +57,9 @@
       "WebFetch(domain:github.com)",
       "WebFetch(domain:raw.githubusercontent.com)",
       "Bash(tee /tmp/build.log)",
-      "Bash(cmake --build . --clean-first)"
+      "Bash(cmake --build . --clean-first)",
+      "Bash(sed -i '24d' cmd_i2p.cpp)",
+      "Bash(sed -i '28a\\\\static chrono::client::i2p::SamClient g_i2p_client;' cmd_i2p.cpp)"
     ]
   }
 }

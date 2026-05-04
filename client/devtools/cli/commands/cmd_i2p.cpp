@@ -13,11 +13,20 @@
 #include <thread>
 #include <chrono>
 
+// 启动时自动连接 i2pd (默认传输层)
+void try_auto_connect_i2p()
+{
+    auto& emb = chrono::client::i2p::I2pdEmbedded::instance();
+    emb.start("./i2p_data", 7656);
+    // 非阻塞, 后台启动即可
+}
+
+
 namespace cli = chrono::client::cli;
 using namespace chrono::client::i2p;
 using namespace chrono::client::social;
 
-static SamClient g_i2p_client;
+static chrono::client::i2p::SamClient g_i2p_client;
 
 static int cmd_i2p(int argc, char** argv)
 {
