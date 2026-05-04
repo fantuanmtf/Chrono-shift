@@ -36,12 +36,15 @@ cmake --build build -j$(nproc)
 ./build/chrono-client.exe
 ```
 ## Linux 构建 (GCC)
+```bash
 cd client
 cmake -B build -G "Unix Makefiles"
 cmake --build build -j$(nproc)
+```
 # 运行
+```bash
 ./build/chrono-client
-
+```
 #### 构建产物
 
 ```
@@ -61,6 +64,10 @@ Linux: client/build/chrono-client         # CLI 主程序 (~1.5MB)
 ```bash
 # MSYS2
 pacman -S mingw-w64-x86_64-openssl
+
+# Debian Family/Ubuntu
+sudo apt install libssl-dev
+
 # 或手动指定路径
 cmake .. -DCMAKE_PREFIX_PATH=/path/to/openssl
 ```
@@ -71,6 +78,9 @@ cmake .. -DCMAKE_PREFIX_PATH=/path/to/openssl
 gcc --version  # 需要 >= 13
 # MSYS2 更新
 pacman -Syu
+
+#Debian Family 更新
+sudo apt update && sudo apt upgrade
 ```
 
 ### Rust 库未链接
