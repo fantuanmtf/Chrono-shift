@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Chrono-shift</title>
+<link rel="stylesheet" href="css/default.css" id="theme">
+<!-- 用户自定义CSS覆盖默认主题 -->
+<link rel="stylesheet" href="css/user.css" id="user-theme" disabled>
+</head>
+<body>
+<header id="topbar">
+  <span class="logo">⚡ Chrono-shift</span>
+  <span id="status" class="status">● 离线</span>
+  <nav>
+    <button data-tab="chat" class="tab active">💬 聊天</button>
+    <button data-tab="friends" class="tab">👥 好友</button>
+    <button data-tab="settings" class="tab">⚙ 设置</button>
+  </nav>
+</header>
+
+<main>
+  <!-- 聊天面板 -->
+  <section id="tab-chat" class="panel active">
+    <aside id="chat-list"><div class="empty">暂无聊天</div></aside>
+    <div id="chat-area">
+      <div id="messages"><div class="empty">选择一个聊天开始</div></div>
+      <form id="msg-form">
+        <button type="button" id="btn-img" title="上传图片">🖼</button>
+        <input type="file" id="img-input" accept="image/*" hidden>
+        <input id="msg-input" placeholder="输入消息..." autofocus>
+        <button type="submit" id="btn-send">发送</button>
+      </form>
+    </div>
+  </section>
+
+  <!-- 好友面板 -->
+  <section id="tab-friends" class="panel">
+    <div id="friend-list"><div class="empty">暂无好友</div></div>
+    <form id="friend-form">
+      <input id="friend-uid" placeholder="好友UID">
+      <button type="submit">添加好友</button>
+    </form>
+    <div id="pending-list"></div>
+  </section>
+
+  <!-- 设置面板 -->
+  <section id="tab-settings" class="panel">
+    <h2>设置</h2>
+    <label>UID: <input id="set-uid"></label>
+    <button id="btn-save-uid">保存</button>
+    <hr>
+    <label>传输层:
+      <select id="set-transport">
+        <option value="tor">Tor (默认)</option>
+        <option value="i2p">I2P</option>
+        <option value="local">本地</option>
+      </select>
+    </label>
+    <button id="btn-connect">连接</button>
+    <hr>
+    <h3>自定义CSS</h3>
+    <p class="hint">将你的CSS文件放到 <code>css/user.css</code></p>
+    <label><input type="checkbox" id="toggle-user-css"> 启用自定义样式</label>
+  </section>
+</main>
+
+<script src="js/api.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>
