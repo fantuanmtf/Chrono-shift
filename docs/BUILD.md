@@ -35,11 +35,18 @@ cmake --build build -j$(nproc)
 # 运行
 ./build/chrono-client.exe
 ```
+## Linux 构建 (GCC)
+cd client
+cmake -B build -G "Unix Makefiles"
+cmake --build build -j$(nproc)
+# 运行
+./build/chrono-client
 
-## 构建产物
+#### 构建产物
 
 ```
-client/build/chrono-client.exe   # CLI 主程序 (~5MB)
+Windows: client/build/chrono-client.exe   # CLI 主程序 (~5MB)
+Linux: client/build/chrono-client         # CLI 主程序 (~1.5MB)
 ```
 
 ## CMake 选项
