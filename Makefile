@@ -12,7 +12,7 @@ all: rust_client client
 rust_client:
 	cd client/security && cargo build --release
 
-# ---- C 客户端 (CMake, 仅 Windows) ----
+# ---- C 客户端 (CMake, 跨平台) ----
 client: rust_client
 	cd client && cmake -B build && cmake --build build
 

@@ -24,6 +24,15 @@
 #include <windows.h>
 #endif
 
+#ifdef _LINUX_X86
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <sys/ioctl.h>
+#include <linux/sockios.h>
+#include <linux/if.h>
+#include <linux/if_tun.h>
+#endif
+
 /* CLI 共享头文件 (来自 devtools/cli/) */
 #include "devtools_cli.h"               // g_config, g_command_table, init_commands()
 

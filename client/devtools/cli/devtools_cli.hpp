@@ -327,13 +327,21 @@ int http_get_status(std::string_view response);
 // ============================================================
 // 颜色常量
 // ============================================================
-inline constexpr auto COLOR_RESET  = "\033[0m"sv;
-inline constexpr auto COLOR_RED    = "\033[31m"sv;
-inline constexpr auto COLOR_GREEN  = "\033[32m"sv;
-inline constexpr auto COLOR_YELLOW = "\033[33m"sv;
-inline constexpr auto COLOR_BLUE   = "\033[34m"sv;
-inline constexpr auto COLOR_CYAN   = "\033[36m"sv;
-inline constexpr auto COLOR_BOLD   = "\033[1m"sv;
+#undef COLOR_RESET
+#undef COLOR_RED
+#undef COLOR_GREEN
+#undef COLOR_YELLOW
+#undef COLOR_BLUE
+#undef COLOR_CYAN
+#undef COLOR_BOLD
+
+inline constexpr std::string_view COLOR_RESET  = "\033[0m";
+inline constexpr std::string_view COLOR_RED    = "\033[31m";
+inline constexpr std::string_view COLOR_GREEN  = "\033[32m";
+inline constexpr std::string_view COLOR_YELLOW = "\033[33m";
+inline constexpr std::string_view COLOR_BLUE   = "\033[34m";
+inline constexpr std::string_view COLOR_CYAN   = "\033[36m";
+inline constexpr std::string_view COLOR_BOLD   = "\033[1m";
 
 // ============================================================
 // 全局实例声明 (定义在 main.cpp)

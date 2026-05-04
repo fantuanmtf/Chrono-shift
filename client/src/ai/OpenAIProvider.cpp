@@ -10,10 +10,10 @@
 #include <sstream>
 #include <algorithm>
 #include <cctype>
-#include <windows.h>
-#include <winhttp.h>
+#include <cstring>
+#include <unordered_map>
 
-#pragma comment(lib, "winhttp.lib")
+#include "../network/CrossPlatformHttp.h"
 
 namespace chrono {
 namespace client {
@@ -157,115 +157,17 @@ std::string OpenAIProvider::parse_chat_response(const std::string& body) {
 }
 
 std::string OpenAIProvider::http_post(const std::string& body) {
-    // 使用 WinHTTP 发送请求
-    HINTERNET hSession = nullptr;
-    HINTERNET hConnect = nullptr;
-    HINTERNET hRequest = nullptr;
-    std::string result;
-
-    auto parse_url = [](const std::string& url,
-                         std::string& host,
-                         std::string& path,
-                         INTERNET_PORT& port,
-                         bool& is_secure) {
-        // 解析 URL: https://api.openai.com/v1/chat/completions
-        is_secure = url.find("https://") == 0;
-        std::string rest = is_secure ? url.substr(8) : url;
-        if (!is_secure && url.find("http://") == 0) {
-            rest = url.substr(7);
-        }
-
-        auto slash_pos = rest.find('/');
-        auto colon_pos = rest.find(':');
-
-        if (colon_pos != std::string::npos && (colon_pos < slash_pos || slash_pos == std::string::npos)) {
-            host = rest.substr(0, colon_pos);
-            auto port_str = slash_pos != std::string::npos
-                          ? rest.substr(colon_pos + 1, slash_pos - colon_pos - 1)
-                          : rest.substr(colon_pos + 1);
-            port = static_cast<INTERNET_PORT>(std::stoi(port_str));
-        } else {
-            host = slash_pos != std::string::npos ? rest.substr(0, slash_pos) : rest;
-            port = is_secure ? INTERNET_DEFAULT_HTTPS_PORT : INTERNET_DEFAULT_HTTP_PORT;
-        }
-
-        path = slash_pos != std::string::npos ? rest.substr(slash_pos) : "/";
-    };
-
-    std::string host, path;
-    INTERNET_PORT port;
-    bool is_secure;
-    parse_url(api_endpoint_, host, path, port, is_secure);
-
-    hSession = WinHttpOpen(L"Chrono-shift AI/1.0",
-                           WINHTTP_ACCESS_TYPE_DEFAULT_PROXY,
-                           nullptr, nullptr, 0);
-    if (!hSession) return "";
-
-    std::wstring whost(host.begin(), host.end());
-    hConnect = WinHttpConnect(hSession, whost.c_str(), port, 0);
-    if (!hConnect) {
-        WinHttpCloseHandle(hSession);
-        return "";
-    }
-
-    std::wstring wpath(path.begin(), path.end());
-    hRequest = WinHttpOpenRequest(hConnect, L"POST", wpath.c_str(),
-                                  nullptr, nullptr, nullptr,
-                                  is_secure ? WINHTTP_FLAG_SECURE : 0);
-    if (!hRequest) {
-        WinHttpCloseHandle(hConnect);
-        WinHttpCloseHandle(hSession);
-        return "";
-    }
-
-    // 设置 Content-Type header
-    std::wstring content_type = L"Content-Type: application/json";
-    WinHttpAddRequestHeaders(hRequest, content_type.c_str(), -1, WINHTTP_ADDREQ_FLAG_ADD);
-
-    // 条件添加 Authorization header (Ollama 本地模型不需要 API key)
+    using namespace chrono::client::network;
+    
+    std::unordered_map<std::string, std::string> headers;
+    headers["Content-Type"] = "application/json";
+    
     if (!api_key_.empty()) {
-        std::wstring auth_header = L"Authorization: Bearer " + std::wstring(api_key_.begin(), api_key_.end());
-        WinHttpAddRequestHeaders(hRequest, auth_header.c_str(), -1, WINHTTP_ADDREQ_FLAG_ADD);
+        headers["Authorization"] = "Bearer " + api_key_;
     }
 
-    // 发送请求
-    if (!WinHttpSendRequest(hRequest, nullptr, 0,
-                            const_cast<char*>(body.data()),
-                            static_cast<DWORD>(body.size()),
-                            static_cast<DWORD>(body.size()), 0)) {
-        WinHttpCloseHandle(hRequest);
-        WinHttpCloseHandle(hConnect);
-        WinHttpCloseHandle(hSession);
-        return "";
-    }
-
-    if (!WinHttpReceiveResponse(hRequest, nullptr)) {
-        WinHttpCloseHandle(hRequest);
-        WinHttpCloseHandle(hConnect);
-        WinHttpCloseHandle(hSession);
-        return "";
-    }
-
-    // 读取响应
-    DWORD bytes_available = 0;
-    std::vector<char> buffer;
-    while (WinHttpQueryDataAvailable(hRequest, &bytes_available) && bytes_available > 0) {
-        buffer.resize(buffer.size() + bytes_available + 1);
-        DWORD bytes_read = 0;
-        WinHttpReadData(hRequest, buffer.data() + buffer.size() - bytes_available - 1,
-                        bytes_available, &bytes_read);
-        buffer[buffer.size() - bytes_available - 1 + bytes_read] = '\0';
-    }
-
-    result = buffer.data();
-
-    // 清理
-    WinHttpCloseHandle(hRequest);
-    WinHttpCloseHandle(hConnect);
-    WinHttpCloseHandle(hSession);
-
-    return result;
+    auto response = CrossPlatformHttp::post(api_endpoint_, body, headers);
+    return response.body;
 }
 
 } // namespace ai

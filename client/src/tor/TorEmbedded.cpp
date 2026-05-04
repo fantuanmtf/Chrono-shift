@@ -18,6 +18,7 @@
 #define PATH_SEP "\\"
 #else
 #include <sys/wait.h>
+#include <sys/stat.h>
 #include <signal.h>
 #include <unistd.h>
 #define PATH_SEP "/"

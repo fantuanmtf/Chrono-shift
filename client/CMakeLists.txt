@@ -13,13 +13,13 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 
 # 编译器版本提示
 if(CMAKE_CXX_COMPILER_ID MATCHES "GNU" AND CMAKE_CXX_COMPILER_VERSION VERSION_LESS 13)
-    message(FATAL_ERROR "C++23 需要 GCC 13+, 当前: ${CMAKE_CXX_COMPILER_VERSION}")
+    message(FATAL_ERROR "C++23 requires GCC 13+, Now: ${CMAKE_CXX_COMPILER_VERSION}")
 endif()
 if(CMAKE_CXX_COMPILER_ID MATCHES "Clang" AND CMAKE_CXX_COMPILER_VERSION VERSION_LESS 16)
-    message(FATAL_ERROR "C++23 需要 Clang 16+, 当前: ${CMAKE_CXX_COMPILER_VERSION}")
+    message(FATAL_ERROR "C++23 requires Clang 16+, Now: ${CMAKE_CXX_COMPILER_VERSION}")
 endif()
 if(CMAKE_CXX_COMPILER_ID MATCHES "MSVC" AND CMAKE_CXX_COMPILER_VERSION VERSION_LESS 1936)
-    message(FATAL_ERROR "C++23 需要 MSVC 2022 17.6+ (_MSC_VER >= 1936), 当前: ${CMAKE_CXX_COMPILER_VERSION}")
+    message(FATAL_ERROR "C++23 requires MSVC 2022 17.6+ (_MSC_VER >= 1936), Now: ${CMAKE_CXX_COMPILER_VERSION}")
 endif()
 
 # 查找 Rust 编译出的静态库
@@ -30,14 +30,15 @@ set(RUST_SECURITY_LIB "${CMAKE_CURRENT_SOURCE_DIR}/security/target/release/libch
 # ============================================================
 find_package(OpenSSL QUIET)
 if(OpenSSL_FOUND)
-    message(STATUS "OpenSSL 已找到: ${OpenSSL_VERSION}")
+    message(STATUS "OpenSSL Found: ${OpenSSL_VERSION}")
     add_compile_definitions(HTTPS_SUPPORT=1)
 else()
-    message(WARNING "OpenSSL 未找到 — HTTPS 支持将被禁用")
-    message(WARNING "  请安装 OpenSSL 开发库:")
+    message(WARNING "Unable to find OpenSSL library — HTTPS Support will be disabled")
+    message(WARNING "  Please install OpenSSL library:")
     message(WARNING "    - MSYS2: pacman -S mingw-w64-x86_64-openssl")
     message(WARNING "    - vcpkg: vcpkg install openssl")
-    message(WARNING "    - 或设置 CMAKE_PREFIX_PATH 指向 OpenSSL 安装目录")
+    message(WARNING "    - Debian Family: sudo apt install libssl-dev")
+    message(WARNING "    - Or set the CMAKE_PREFIX_PATH to OpenSSL installation path")
     add_compile_definitions(HTTPS_SUPPORT=0)
 endif()
 
@@ -108,7 +109,7 @@ check_cxx_source_compiles("
     int main() { std::println(\"C++23 test\"); return 0; }
 " HAS_CPP23_PRINT)
 if(NOT HAS_CPP23_PRINT)
-    message(WARNING "编译器不支持 std::println — 将回退到 printf")
+    message(WARNING "Compiler doesn't support \"std::println\" — Rollback to \"printf\"")
     add_compile_definitions(NO_CPP23_PRINT=1)
 endif()
 
@@ -119,24 +120,45 @@ if(EXISTS ${RUST_SECURITY_LIB})
     target_link_libraries(chrono-client PRIVATE ${RUST_SECURITY_LIB})
 endif()
 
-target_link_libraries(chrono-client PRIVATE
-    ws2_32
-    user32
-    gdi32
-    shell32
-    ole32
-    uuid
-    winhttp
-    ntdll
-    bcrypt
-    userenv
-)
-
-# ASM 混淆函数 (obfuscate.obj)
-if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/security/asm/obfuscate.obj")
+# 平台特定的库链接
+if(WIN32)
     target_link_libraries(chrono-client PRIVATE
-        "${CMAKE_CURRENT_SOURCE_DIR}/security/asm/obfuscate.obj"
+        ws2_32
+        user32
+        gdi32
+        shell32
+        ole32
+        uuid
+        winhttp
+        ntdll
+        bcrypt
+        userenv
     )
+else()
+    # Linux/Unix 库
+    target_link_libraries(chrono-client PRIVATE
+        pthread
+        dl
+        rt
+    )
+    # 可选: 添加其他Unix系统库
+    if(APPLE)
+        target_link_libraries(chrono-client PRIVATE
+            "-framework CoreFoundation"
+            "-framework Security"
+        )
+    endif()
+endif()
+
+# ASM 混淆函数
+if(WIN32)
+    set(ASM_OBJ_FILE "${CMAKE_CURRENT_SOURCE_DIR}/security/asm/obfuscate.obj")
+else()
+    set(ASM_OBJ_FILE "${CMAKE_CURRENT_SOURCE_DIR}/security/asm/obfuscate.o")
+endif()
+
+if(EXISTS "${ASM_OBJ_FILE}")
+    target_link_libraries(chrono-client PRIVATE "${ASM_OBJ_FILE}")
 endif()
 
 # HTTPS 支持 — 需要 OpenSSL
@@ -193,17 +215,17 @@ endif()
 
 add_custom_target(gen-certs
     COMMAND ${GEN_CERT_CMD}
-    COMMENT "生成自签名 TLS 开发证书 → ${CERTS_DIR}"
+    COMMENT "Generate self-signature TLS development certificate → ${CERTS_DIR}"
     BYPRODUCTS "${CERT_FILE}" "${KEY_FILE}"
 )
 
 add_custom_target(gen-certs-force
     COMMAND ${CMAKE_COMMAND} -E remove "${CERT_FILE}" "${KEY_FILE}"
     COMMAND ${GEN_CERT_CMD}
-    COMMENT "强制重新生成自签名 TLS 开发证书 → ${CERTS_DIR}"
+    COMMENT "Force re-generate self-signature TLS development certificate → ${CERTS_DIR}"
 )
 
 # 提醒: gen-certs 不是默认构建的一部分
 if(NOT EXISTS "${CERT_FILE}")
-    message(STATUS "提示: 运行 'cmake --build . --target gen-certs' 生成开发证书")
+    message(STATUS "Notice: Run 'cmake --build . --target gen-certs' to generate a development certificate")
 endif()

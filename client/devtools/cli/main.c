@@ -9,6 +9,7 @@
 
 #include "devtools_cli.h"
 #include <ctype.h>
+#include <stdarg.h>
 
 /* ============================================================
  * 全局变量定义

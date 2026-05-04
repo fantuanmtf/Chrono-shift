@@ -15,6 +15,7 @@
 #include "devtools_cli.hpp"
 
 #include <cctype>
+#include <chrono>
 #include <cstdlib>
 #include <format>
 #include <iostream>
@@ -194,9 +195,24 @@ void cli::print_colored(std::string_view color, std::string_view text)
     cli::print("{}", text);
     SetConsoleTextAttribute(hConsole, attr);
 #else
-    cli::print("{}{}{}", color, text, cli::COLOR_RESET);
+    constexpr std::string_view reset_code = "\033[0m";
+    cli::print("{}{}{}", color, text, reset_code);
 #endif
 }
+
+#ifdef _LINUX_X86
+int cli::tun_alloc(char* name, int flags)
+{
+    int fd = open("/dev/net/tun", O_RDWR);
+    if (fd < 0) {
+        return -1;
+    }
+
+    struct ifreq ifr;
+    memset(&ifr, 0, sizeof(ifr));
+
+}
+#endif
 
 void cli::print_json(std::string_view json, int indent)
 {

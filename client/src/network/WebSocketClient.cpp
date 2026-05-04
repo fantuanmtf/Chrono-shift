@@ -13,11 +13,14 @@
 #include <cstdlib>
 #include <ctime>
 
+#ifdef _WIN32
 #include <winsock2.h>
 #include <windows.h>
 #include <wincrypt.h>
-
 #pragma comment(lib, "crypt32.lib")
+#else
+#include <sys/random.h>
+#endif
 
 #include "tls_client.h"
 
@@ -56,19 +59,26 @@ bool WebSocketClient::generate_key(char* key_b64, size_t key_len)
 
     unsigned char random_key[16];
 
-    /* 使用 Windows CryptoAPI */
+#ifdef _WIN32
     HCRYPTPROV hProv = 0;
     if (CryptAcquireContext(&hProv, nullptr, nullptr, PROV_RSA_FULL,
                             CRYPT_VERIFYCONTEXT)) {
         CryptGenRandom(hProv, 16, random_key);
         CryptReleaseContext(hProv, 0);
     } else {
-        /* 回退: 使用时间和 rand() */
         std::srand(static_cast<unsigned int>(std::time(nullptr)));
         for (int i = 0; i < 16; i++) {
             random_key[i] = static_cast<unsigned char>(std::rand() & 0xFF);
         }
     }
+#else
+    if (getrandom(random_key, sizeof(random_key), GRND_RANDOM) != sizeof(random_key)) {
+        std::srand(static_cast<unsigned int>(std::time(nullptr)));
+        for (int i = 0; i < 16; i++) {
+            random_key[i] = static_cast<unsigned char>(std::rand() & 0xFF);
+        }
+    }
+#endif
 
     Sha1::base64_encode(random_key, 16, key_b64);
     return true;
@@ -236,6 +246,7 @@ int WebSocketClient::send_frame(WsOpcode opcode, const uint8_t* payload, size_t 
 
     /* 生成掩码 key */
     unsigned char mask_key[4];
+#ifdef _WIN32
     HCRYPTPROV hProv = 0;
     if (CryptAcquireContext(&hProv, nullptr, nullptr, PROV_RSA_FULL,
                             CRYPT_VERIFYCONTEXT)) {
@@ -247,6 +258,14 @@ int WebSocketClient::send_frame(WsOpcode opcode, const uint8_t* payload, size_t 
         mask_key[2] = static_cast<unsigned char>(std::rand() & 0xFF);
         mask_key[3] = static_cast<unsigned char>(std::rand() & 0xFF);
     }
+#else
+    if (getrandom(mask_key, sizeof(mask_key), GRND_RANDOM) != sizeof(mask_key)) {
+        mask_key[0] = static_cast<unsigned char>(std::rand() & 0xFF);
+        mask_key[1] = static_cast<unsigned char>(std::rand() & 0xFF);
+        mask_key[2] = static_cast<unsigned char>(std::rand() & 0xFF);
+        mask_key[3] = static_cast<unsigned char>(std::rand() & 0xFF);
+    }
+#endif
 
     /* 追加掩码 key 到头部 */
     for (int i = 0; i < 4; i++) {

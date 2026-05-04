@@ -24,6 +24,7 @@
 #include <direct.h>   /* _mkdir */
 #else
 #include <sys/stat.h> /* mkdir */
+#include <ctype.h>    /* isalnum */
 #endif
 
 /* ============================================================
