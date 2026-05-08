@@ -43,12 +43,22 @@ else()
 endif()
 
 # ============================================================
+# QT6 检测
+# ============================================================
+find_package(Qt6 COMPONENTS Core Widgets Gui REQUIRED)
+if(Qt6_FOUND)
+    message(STATUS "Qt6 Found: ${Qt6_VERSION}")
+    set(HAS_QT6 ON)
+else()
+    message(WARNING "Qt6 not found - GUI build will be disabled")
+    set(HAS_QT6 OFF)
+endif()
+
+# ============================================================
 # 源文件
 # ============================================================
 
 # === C++ 源文件 (CLI 架构) ===
-# 注意: src/app/*.cpp (GUI) 和 devtools/core/*.cpp (DevToolsEngine + HTTP/IPC)
-# 已移除，CLI 模式不需要这些 GUI 集成组件
 file(GLOB_RECURSE CLIENT_CPP_SOURCES
     src/util/*.cpp
     src/network/*.cpp
@@ -63,7 +73,6 @@ file(GLOB_RECURSE CLIENT_CPP_SOURCES
 )
 
 # === CLI 工具 C++ 源文件 (C++23 迁移) ===
-# 只包含核心 C++ 文件，命令实现在 .c 文件中 (中文无损坏)
 file(GLOB CLI_CPP_SOURCES
     devtools/cli/main.cpp
     devtools/cli/net_http.cpp
@@ -112,8 +121,6 @@ if(NOT HAS_CPP23_PRINT)
     message(WARNING "Compiler doesn't support \"std::println\" — Rollback to \"printf\"")
     add_compile_definitions(NO_CPP23_PRINT=1)
 endif()
-
-# 注意: WebView2 和 GUI 组件 (src/app/, devtools/core/) 已移除
 
 if(EXISTS ${RUST_SECURITY_LIB})
     target_compile_definitions(chrono-client PRIVATE RUST_FEATURE_ENABLED)
@@ -177,6 +184,87 @@ if(WIN32)
             LINK_FLAGS "/SUBSYSTEM:CONSOLE"
         )
     endif()
+endif()
+
+# ============================================================
+# QT6 GUI 应用
+# ============================================================
+if(HAS_QT6)
+    file(GLOB_RECURSE QT_GUI_SOURCES
+        src/qt/*.cpp
+        src/qt/*.h
+    )
+
+    set(QT_RESOURCES
+        src/qt/icons.qrc
+    )
+
+    qt_add_resources(QT_RESOURCES_RCC ${QT_RESOURCES})
+
+    add_executable(chrono-client-gui
+        ${QT_GUI_SOURCES}
+        ${QT_RESOURCES_RCC}
+    )
+
+    target_include_directories(chrono-client-gui PRIVATE
+        include
+        src
+        src/qt
+        devtools/core
+        devtools/cli
+    )
+
+    target_link_libraries(chrono-client-gui PRIVATE
+        Qt6::Core
+        Qt6::Widgets
+        Qt6::Gui
+    )
+
+    if(OpenSSL_FOUND)
+        target_link_libraries(chrono-client-gui PRIVATE OpenSSL::SSL OpenSSL::Crypto)
+    endif()
+
+    if(WIN32)
+        target_link_libraries(chrono-client-gui PRIVATE
+            ws2_32
+            user32
+            gdi32
+            shell32
+            ole32
+            uuid
+            winhttp
+            ntdll
+            bcrypt
+            userenv
+        )
+        if(CMAKE_CXX_COMPILER_ID MATCHES "GNU" OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+            set_target_properties(chrono-client-gui PROPERTIES
+                LINK_FLAGS "-Wl,--subsystem,windows"
+            )
+        else()
+            set_target_properties(chrono-client-gui PROPERTIES
+                LINK_FLAGS "/SUBSYSTEM:WINDOWS"
+            )
+        endif()
+    else()
+        target_link_libraries(chrono-client-gui PRIVATE
+            pthread
+            dl
+            rt
+        )
+        if(APPLE)
+            target_link_libraries(chrono-client-gui PRIVATE
+                "-framework CoreFoundation"
+                "-framework Security"
+            )
+        endif()
+    endif()
+
+    set_target_properties(chrono-client-gui PROPERTIES
+        AUTOMOC ON
+        AUTORCC ON
+        AUTOUIC ON
+    )
 endif()
 
 # ============================================================

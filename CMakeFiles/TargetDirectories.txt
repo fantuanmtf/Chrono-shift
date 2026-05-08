@@ -1,0 +1,10 @@
+/home/your151/文档/Chrono-shift/CMakeFiles/edit_cache.dir
+/home/your151/文档/Chrono-shift/CMakeFiles/rebuild_cache.dir
+/home/your151/文档/Chrono-shift/client/CMakeFiles/chrono-client.dir
+/home/your151/文档/Chrono-shift/client/CMakeFiles/chrono-client-gui.dir
+/home/your151/文档/Chrono-shift/client/CMakeFiles/gen-certs.dir
+/home/your151/文档/Chrono-shift/client/CMakeFiles/gen-certs-force.dir
+/home/your151/文档/Chrono-shift/client/CMakeFiles/edit_cache.dir
+/home/your151/文档/Chrono-shift/client/CMakeFiles/rebuild_cache.dir
+/home/your151/文档/Chrono-shift/client/CMakeFiles/chrono-client-gui_autogen_timestamp_deps.dir
+/home/your151/文档/Chrono-shift/client/CMakeFiles/chrono-client-gui_autogen.dir

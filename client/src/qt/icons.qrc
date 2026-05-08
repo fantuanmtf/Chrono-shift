@@ -1,0 +1,12 @@
+<RCC>
+    <qresource prefix="/icons">
+        <file>icons/send.png</file>
+        <file>icons/settings.png</file>
+        <file>icons/back.png</file>
+        <file>icons/minimize.png</file>
+        <file>icons/maximize.png</file>
+        <file>icons/close.png</file>
+        <file>icons/eye.png</file>
+        <file>icons/eye_off.png</file>
+    </qresource>
+</RCC>

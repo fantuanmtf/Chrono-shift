@@ -1,0 +1,8 @@
+{
+	"InstallScripts" : 
+	[
+		"/home/your151/\u6587\u6863/Chrono-shift/cmake_install.cmake",
+		"/home/your151/\u6587\u6863/Chrono-shift/client/cmake_install.cmake"
+	],
+	"Parallel" : false
+}
