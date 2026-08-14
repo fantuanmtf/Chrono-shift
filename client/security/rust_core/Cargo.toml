@@ -1,0 +1,69 @@
+[package]
+name = "chrono-core"
+# 产品版本 v0.0.8.2（Cargo 要求标准 semver，故此处为 0.8.2）
+version = "0.8.2"
+edition = "2021"
+rust-version = "1.80"
+
+[[bin]]
+name = "chrono-daemon"
+path = "src/main.rs"
+
+[lib]
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[dependencies]
+# AES-256-GCM
+aes-gcm = "0.10"
+# SHA-256 + HMAC
+sha2 = "0.10"
+hmac = "0.12"
+# Constant-time comparison
+ct-codecs = "0.1"
+# UTF-8 validation
+simdutf8 = "0.1"
+# Zeroize secrets in memory
+zeroize = { version = "1", features = ["derive"] }
+# Thread-safe RNG
+rand = "0.8"
+rand_core = { version = "0.6", features = ["getrandom"] }
+# Serde for JSON
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+# Async runtime
+tokio = { version = "1", features = ["full"] }
+# UUID generation
+uuid = { version = "1", features = ["v4"] }
+# X25519 ECDH
+x25519-dalek = { version = "2", features = ["static_secrets"] }
+# Ed25519 identity keys
+ed25519-dalek = "2"
+# HKDF (RFC 5869)
+hkdf = "0.12"
+# HTTP client (optional)
+reqwest = { version = "0.12", features = ["rustls-tls"], optional = true }
+# WebSocket (optional)
+tungstenite = { version = "0.24", optional = true }
+# TLS (optional)
+rustls = { version = "0.23", optional = true }
+# Logging
+log = "0.4"
+env_logger = "0.11"
+hex = "0.4.3"
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.59", features = ["Win32_System_Console", "Win32_Foundation"] }
+
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
+
+[features]
+default = []
+net = ["reqwest", "tungstenite", "rustls"]
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true

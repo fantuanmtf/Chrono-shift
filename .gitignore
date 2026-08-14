@@ -1,0 +1,98 @@
+# 编译输出
+*.o
+*.obj
+*.exe
+*.exe.d
+*.dll
+*.lib
+*.a
+*.dll.a
+*.exp
+*.ilk
+*.pdb
+out/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# 证书
+*.crt
+*.key
+*.pem
+
+# 编译目录 (递归)
+build/
+cmake-build-*/
+**/CMakeFiles/
+**/cmake_install.cmake
+**/CMakeCache.txt
+**/Makefile.cmake
+**/*.cmake
+!**/CMakeLists.txt
+
+# Rust
+**/target/
+**/*.rs.bk
+# 注意：二进制 crate 的 Cargo.lock 应提交（可复现构建），仅忽略孤儿 lock
+**/Cargo.lock
+!client/security/rust_core/Cargo.lock
+
+# 本地 AI 工具个人配置（含本地路径，不进库）
+.claude/settings.local.json
+.cursor/hooks/
+
+# Rust build artifacts
+*.rmeta
+*.rlib
+*.d  # Rust dep files (但保留 Makefile.d)
+
+# C/C++ build
+*.gcno
+*.gcda
+*.o.d
+
+# 日志
+*.log
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+
+# Node
+node_modules/
+package-lock.json
+
+# 打包
+*.zip
+*.tar.gz
+*.7z
+
+# 临时
+*.tmp
+*.temp
+tmp/
+temp/
+
+# 本地备份与工具缓存（不进库）
+chrono-backup-pre-clean.bundle
+.cargo-home/
+
+# 运行时数据（身份密钥等，绝不入库）
+data/
+
+# 安全报告 (生成)
+security_report_*.txt
+security_report_*.json
+
+# vendor 构建产物 (保留源码)
+client/vendor/build/
+client/vendor/**/*.o
+client/vendor/**/*.obj
+
+.kagent/

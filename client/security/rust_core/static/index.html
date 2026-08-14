@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Chrono-shift v8.1 — 控制台</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:monospace;background:#1a1a2e;color:#e0e0e0;max-width:900px;margin:0 auto;padding:20px}
+h1{color:#00d4ff;font-size:18px;margin-bottom:10px;border-bottom:1px solid #333;padding-bottom:8px}
+nav{display:flex;gap:4px;margin:12px 0}
+nav a{color:#aaa;text-decoration:none;padding:6px 14px;background:#16213e;border-radius:4px;font-size:13px}
+nav a:hover,nav a.active{color:#00d4ff;background:#0f3460}
+.card{background:#16213e;border-radius:6px;padding:14px;margin:10px 0}
+.card h3{color:#00d4ff;font-size:14px;margin-bottom:8px}
+.row{display:flex;gap:10px;flex-wrap:wrap}
+.stat{background:#0f3460;padding:10px 16px;border-radius:4px;text-align:center;min-width:100px}
+.stat .num{font-size:22px;color:#00d4ff;font-weight:bold}
+.stat .label{font-size:11px;color:#888;margin-top:4px}
+input,button,select{background:#0f3460;border:1px solid #333;color:#e0e0e0;padding:8px 12px;border-radius:4px;font-family:monospace;font-size:13px}
+button{background:#00d4ff;color:#1a1a2e;font-weight:bold;cursor:pointer}
+button:hover{background:#00b4d8}
+#log{background:#0a0a1a;border-radius:4px;padding:10px;height:200px;overflow-y:auto;font-size:12px;color:#888}
+#log .info{color:#00d4ff}
+#log .error{color:#ff4444}
+#log .ok{color:#44ff44}
+</style>
+</head>
+<body>
+<h1>Chrono-shift v8.1</h1>
+<nav>
+  <a href="#" class="active" onclick="showTab('dash')">仪表盘</a>
+  <a href="#" onclick="showTab('peers')">节点</a>
+  <a href="#" onclick="showTab('proxy')">代理</a>
+  <a href="#" onclick="showTab('trust')">信任</a>
+  <a href="#" onclick="showTab('log')">日志</a>
+</nav>
+
+<div id="dash">
+  <div class="card">
+    <div class="row" id="stats">
+      <div class="stat"><div class="num" id="uptime">--</div><div class="label">运行时间</div></div>
+      <div class="stat"><div class="num" id="conns">--</div><div class="label">连接数</div></div>
+      <div class="stat"><div class="num" id="peers">--</div><div class="label">节点</div></div>
+      <div class="stat"><div class="num" id="tests">118</div><div class="label">测试</div></div>
+    </div>
+  </div>
+  <div class="card">
+    <h3>连接节点</h3>
+    <input id="peerAddr" placeholder="IP:端口 (如 38.244.50.122:9000)" style="width:240px">
+    <input id="peerUid" placeholder="节点名称" style="width:120px">
+    <button onclick="doConnect()">连接</button>
+    <span id="connectResult" style="margin-left:10px;font-size:12px"></span>
+  </div>
+  <div class="card">
+    <h3>创建代理</h3>
+    <select id="proxyType"><option>irc</option><option>bbs</option></select>
+    <input id="proxyPort" placeholder="端口" style="width:80px" value="6667">
+    <button onclick="doProxy()">创建</button>
+  </div>
+</div>
+
+<div id="peers" style="display:none">
+  <div class="card"><h3>已知节点</h3><div id="peerList">加载中...</div></div>
+</div>
+
+<div id="proxy" style="display:none">
+  <div class="card"><h3>活跃代理</h3><div id="serviceList">加载中...</div></div>
+</div>
+
+<div id="trust" style="display:none">
+  <div class="card"><h3>信任链</h3><p style="color:#888">信任网 (WoT) 通过 Ed25519 签名图自动计算。</p></div>
+</div>
+
+<div id="logtab" style="display:none">
+  <div class="card"><h3>实时日志</h3><div id="log"></div></div>
+</div>
+
+<script>
+// Tab switching
+function showTab(name) {
+  ['dash','peers','proxy','trust','logtab'].forEach(t => document.getElementById(t).style.display = t===name ? 'block' : 'none');
+  document.querySelectorAll('nav a').forEach(a => a.classList.remove('active'));
+  event.target.classList.add('active');
+  if(name==='peers') loadPeers();
+  if(name==='proxy') loadServices();
+}
+
+// Auto-refresh status
+async function refresh() {
+  try {
+    let r = await fetch('/api/status');
+    let s = await r.json();
+    document.getElementById('uptime').textContent = fmtTime(s.uptime_secs);
+    document.getElementById('conns').textContent = s.connections;
+  } catch(e) {}
+}
+setInterval(refresh, 3000);
+refresh();
+
+function fmtTime(s) {
+  let h=Math.floor(s/3600), m=Math.floor((s%3600)/60);
+  return h>0 ? h+'h '+m+'m' : m+'m';
+}
+
+async function doConnect() {
+  let addr = document.getElementById('peerAddr').value;
+  let uid = document.getElementById('peerUid').value || 'peer';
+  let r = await fetch('/api/connect', {method:'POST', body:JSON.stringify({addr,uid})});
+  let j = await r.json();
+  document.getElementById('connectResult').textContent = j.status || j.error;
+}
+
+function doProxy() {
+  alert('代理创建功能将在 Phase 3 完成');
+}
+
+async function loadPeers() {
+  let r = await fetch('/api/peers');
+  let j = await r.json();
+  document.getElementById('peerList').innerHTML = j.peers.length ? j.peers.map(p=>'<div>'+p+'</div>').join('') : '无节点';
+  document.getElementById('peers').textContent = j.peers.length;
+}
+
+async function loadServices() {
+  document.getElementById('serviceList').textContent = '暂无代理 (Phase 3)';
+}
+</script>
+</body>
+</html>

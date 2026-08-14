@@ -1,0 +1,47 @@
+# GitHub linguist: 指定真实语言
+# Chrono-shift 主要是 C++ (45%) + Rust (25%) + C (15%) + JS/CSS (10%)
+
+# 标记所有 Makefile 为 generated (不计入语言统计)
+Makefile linguist-generated
+**/Makefile linguist-generated
+Makefile.* linguist-generated
+**/Makefile.* linguist-generated
+*.mk linguist-generated
+
+# 标记构建脚本
+*.cmake linguist-generated
+
+# 标记 Rust build 产物
+*.o linguist-generated
+*.d linguist-generated
+*.rmeta linguist-generated
+*.rlib linguist-generated
+*.timestamp linguist-generated
+CACHEDIR.TAG linguist-generated
+.cargo-lock linguist-generated
+.rustc_info.json linguist-generated
+
+# 标记生成的代码
+**/generated/** linguist-generated
+
+# C++ 源码 (主要语言)
+*.cpp linguist-detectable
+*.hpp linguist-detectable
+*.h linguist-detectable
+
+# Rust 源码 (第二语言)
+*.rs linguist-detectable
+
+# C 源码
+*.c linguist-detectable
+
+# Web UI
+*.js linguist-detectable
+*.css linguist-detectable
+*.html linguist-detectable
+
+# Python scripts
+*.py linguist-detectable
+
+# 文档
+*.md linguist-documentation
