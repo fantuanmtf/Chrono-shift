@@ -68,26 +68,15 @@ panic = "abort"    # 紧急中止 (减小体积)
 strip = true       # 去除调试符号
 ```
 
-构建产物: ~1.6 MB (Windows), 零外部 DLL 依赖。88 tests / 0 failures。
+构建产物: ~2.3 MB (Linux x86_64)。142 tests / 0 failures。
 
-## 交叉编译
+## 交叉编译（可选）
 
-```bash
-# Windows → Linux
-rustup target add x86_64-unknown-linux-gnu
-cargo build --release --target x86_64-unknown-linux-gnu
-
-# Windows → macOS
-rustup target add x86_64-apple-darwin
-cargo build --release --target x86_64-apple-darwin
-```
-
-## NSIS 安装包 (仅 Windows)
+项目目标平台为 Linux x86_64（Windows 支持已移除）。如需其他 Linux 架构：
 
 ```bash
-# 需要 NSIS 3.x
-makensis installer/chrono_setup.nsi
-# 输出: Chrono-shift-Release/Chrono-shift-Setup.exe
+rustup target add aarch64-unknown-linux-gnu
+cargo build --release --target aarch64-unknown-linux-gnu
 ```
 
 ## 故障排除

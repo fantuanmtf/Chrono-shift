@@ -1,8 +1,9 @@
 name: Release
 
-# 在推送 v* 标签时构建跨平台二进制包并生成 SHA256SUMS。
+# 在推送 v* 标签时构建 Linux 二进制包并生成 SHA256SUMS。
 # 签名由维护者在本地用 PGP 私钥完成 (scripts/sign_release.sh)，
 # 然后上传 .asc 到 Releases。
+# 注意: 项目目标平台为 Linux；Windows 支持已移除 (v0.0.8.2+)。
 
 on:
   push:
@@ -15,23 +16,14 @@ env:
 jobs:
   build:
     name: Build + Package
-    strategy:
-      matrix:
-        include:
-          - os: ubuntu-latest
-            target: x86_64-unknown-linux-gnu
-            artifact: chrono-daemon-linux-x86_64
-          - os: windows-latest
-            target: x86_64-pc-windows-msvc
-            artifact: chrono-daemon.exe
-    runs-on: ${{ matrix.os }}
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
         with:
-          targets: ${{ matrix.target }}
+          targets: x86_64-unknown-linux-gnu
 
       - name: Cache cargo
         uses: actions/cache@v4
@@ -40,26 +32,25 @@ jobs:
             ~/.cargo/registry
             ~/.cargo/git
             client/security/rust_core/target
-          key: ${{ runner.os }}-${{ matrix.target }}-cargo-${{ hashFiles('client/security/rust_core/Cargo.lock') }}
+          key: release-cargo-${{ hashFiles('client/security/rust_core/Cargo.lock') }}
 
       - name: Build
         working-directory: client/security/rust_core
-        run: cargo build --release --target ${{ matrix.target }}
+        run: cargo build --release --target x86_64-unknown-linux-gnu
 
       - name: Package
         shell: bash
         run: |
           set -euo pipefail
           mkdir -p dist
-          BIN="client/security/rust_core/target/${{ matrix.target }}/release/chrono-daemon"
-          if [ "${{ matrix.os }}" = "windows-latest" ]; then BIN="$BIN.exe"; fi
-          cp "$BIN" "dist/${{ matrix.artifact }}"
+          cp client/security/rust_core/target/x86_64-unknown-linux-gnu/release/chrono-daemon dist/chrono-daemon-linux-x86_64
           cp LICENSE dist/LICENSE
           cp README.md dist/README.md
-          ( cd dist && sha256sum * > SHA256SUMS )
+          cp docs/RELEASES.md dist/RELEASES.md
+          ( cd dist && find . -maxdepth 1 -type f -exec sha256sum {} + | sed 's|  ./|  |' > SHA256SUMS )
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: chrono-shift-${{ matrix.target }}
+          name: chrono-shift-linux-x86_64
           path: dist/*

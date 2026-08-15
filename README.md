@@ -105,8 +105,6 @@ client/security/rust_core/src/
 | 包 | 说明 |
 |----|------|
 | `chrono-daemon-linux-x86_64` (+ `.asc`) | Linux x86_64 ELF · 单二进制 · PGP 签名 |
-| `chrono-daemon.exe` (+ `.asc`) | Windows x64 · 零 DLL · PGP 签名 |
-| `Chrono-shift-Setup.exe` (+ `.asc`) | Windows NSIS 安装包 |
 | `chrono-bin-v<VERSION>.zip` (+ `.asc`) | 全部产物打包 |
 | `SHA256SUMS` (+ `.asc`) | 校验和清单 + 签名 |
 

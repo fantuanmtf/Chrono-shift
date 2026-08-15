@@ -27,7 +27,7 @@ if [ ! -d "$RELEASE_DIR" ]; then
 fi
 
 # 1. 重新生成校验和 (排除 *.asc 与 SHA256SUMS 自身, 确保签名与内容一致)
-( cd "$RELEASE_DIR" && find . -maxdepth 1 -type f ! -name '*.asc' ! -name "$SUMS" -exec sha256sum {} + | sed 's|^\./||' > "$SUMS" )
+( cd "$RELEASE_DIR" && find . -maxdepth 1 -type f ! -name '*.asc' ! -name "$SUMS" -exec sha256sum {} + | sed 's|  \./|  |' > "$SUMS" )
 
 # 2. 对每个产物做分离签名 (.asc) — --batch --yes 避免 TTY 提示
 for f in "$RELEASE_DIR"/*; do

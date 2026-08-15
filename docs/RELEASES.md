@@ -8,8 +8,6 @@
 | 文件 | 说明 |
 |------|------|
 | `chrono-daemon-linux-x86_64` | Linux x86_64 ELF（单二进制） |
-| `chrono-daemon.exe` | Windows x64（CI 构建） |
-| `Chrono-shift-Setup.exe` | Windows NSIS 安装包（需本机 makensis） |
 | `chrono-bin-v<VERSION>.zip` | 全部产物打包 |
 | `SHA256SUMS` / `SHA256SUMS.asc` | 校验和清单 + 明文签名 |
 | `*.asc` | 每个产物的 PGP 分离签名 |
@@ -29,13 +27,9 @@ cd release && sha256sum * > SHA256SUMS
 python3 -c "import shutil,glob; shutil.make_archive('../../chrono-bin-v0.0.8.2','zip','.')"
 ```
 
-跨平台：推送 `v*` 标签触发 `.github/workflows/release.yml`，
-GitHub Actions 构建 Linux + Windows 产物并上传为 artifacts。
-
-Windows NSIS 安装包（本机，需 NSIS 3.x）：
-```bash
-makensis installer/chrono_setup.nsi
-```
+跨平台（可选）：推送 `v*` 标签触发 `.github/workflows/release.yml`，
+GitHub Actions 构建 Linux x86_64 产物并上传为 artifacts。
+（项目目标平台为 Linux；Windows 支持已移除。）
 
 ### 2. PGP 签名（维护者本机，用私钥）
 
