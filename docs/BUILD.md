@@ -20,8 +20,8 @@ cargo build
 cargo build --release
 
 # 二进制路径
-./target/release/chrono-cli        # Linux/macOS
-./target/release/chrono-cli.exe    # Windows
+./target/release/chrono-daemon      # Linux/macOS
+./target/release/chrono-daemon.exe  # Windows
 ```
 
 ## 运行
@@ -34,7 +34,7 @@ cargo run --release
 cargo run --release -- --dev
 
 # 或直接执行二进制
-./target/release/chrono-cli
+./target/release/chrono-daemon
 ```
 
 ## 测试

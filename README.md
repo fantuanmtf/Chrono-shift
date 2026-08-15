@@ -38,7 +38,7 @@
 ```bash
 cd client/security/rust_core
 cargo build --release
-./target/release/chrono-daemon --dev
+./target/release/chrono-daemon            # 可选: --port 9000
 
 # Web 控制台: http://127.0.0.1:10888
 # API: curl http://127.0.0.1:10888/api/status
@@ -99,18 +99,23 @@ client/security/rust_core/src/
 
 ## 下载
 
-预编译包在 [GitHub Releases](https://github.com/haiyanfurry/Chrono-shift/releases) 页面：
+预编译包发布在 [GitHub Releases](https://github.com/fantuanmtf/Chrono-shift/releases)
+与 [Codeberg Releases](https://codeberg.org/haiyanfurry-mtf/Chrono-Shift/releases)：
 
 | 包 | 说明 |
 |----|------|
-| `chrono-daemon.exe` | Windows 64-bit · 唯一二进制 · 零 DLL |
-| `chrono-daemon-linux` | Linux x86_64 ELF |
-| `Chrono-shift-Setup.exe` | Windows NSIS 安装包 |
-| `chrono-shift_0.0.8.2_amd64.deb` | Debian/Ubuntu 安装包 |
-| `chrono-bin.zip` | 全部打包 |
-| `chrono-bin.zip.asc` | PGP 签名 |
-| `chrono-bin.zip.sha256` | SHA256 校验 |
-| `chrono-bin.zip.sig` | 文件验证签名 |
+| `chrono-daemon-linux-x86_64` (+ `.asc`) | Linux x86_64 ELF · 单二进制 · PGP 签名 |
+| `chrono-daemon.exe` (+ `.asc`) | Windows x64 · 零 DLL · PGP 签名 |
+| `Chrono-shift-Setup.exe` (+ `.asc`) | Windows NSIS 安装包 |
+| `chrono-bin-v<VERSION>.zip` (+ `.asc`) | 全部产物打包 |
+| `SHA256SUMS` (+ `.asc`) | 校验和清单 + 签名 |
+
+**验证签名**（发布流程详见 [docs/RELEASES.md](docs/RELEASES.md)）：
+
+```bash
+gpg --import keys/haiyanfurry-mtf.asc   # 维护者公钥: haiyan-mtf <haiyanfurry@proton.me>
+bash scripts/verify_release.sh
+```
 
 ## 更新日志
 

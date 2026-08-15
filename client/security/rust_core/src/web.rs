@@ -1,6 +1,6 @@
 //! Web Console (v8.1 — Phase 2)
 //!
-//! Embedded HTTP server at 127.0.0.1:7657.
+//! Embedded HTTP server at 127.0.0.1:10888.
 //! Serves a single-page control panel (like I2P router console).
 //! API endpoints return JSON for status, peers, services.
 

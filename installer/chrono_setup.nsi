@@ -1,6 +1,6 @@
 !define PRODUCT_NAME "Chrono-shift"
 !define PRODUCT_VERSION "8.1"
-!define RELEASE_DIR "D:\GitHub\chrono-bin"
+!define RELEASE_DIR "release" ; 本地打包目录
 
 Name "${PRODUCT_NAME} ${PRODUCT_VERSION}"
 OutFile "${RELEASE_DIR}\Chrono-shift-Setup.exe"

@@ -1,0 +1,65 @@
+name: Release
+
+# 在推送 v* 标签时构建跨平台二进制包并生成 SHA256SUMS。
+# 签名由维护者在本地用 PGP 私钥完成 (scripts/sign_release.sh)，
+# 然后上传 .asc 到 Releases。
+
+on:
+  push:
+    tags:
+      - "v*"
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+    name: Build + Package
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            artifact: chrono-daemon-linux-x86_64
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            artifact: chrono-daemon.exe
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            client/security/rust_core/target
+          key: ${{ runner.os }}-${{ matrix.target }}-cargo-${{ hashFiles('client/security/rust_core/Cargo.lock') }}
+
+      - name: Build
+        working-directory: client/security/rust_core
+        run: cargo build --release --target ${{ matrix.target }}
+
+      - name: Package
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          BIN="client/security/rust_core/target/${{ matrix.target }}/release/chrono-daemon"
+          if [ "${{ matrix.os }}" = "windows-latest" ]; then BIN="$BIN.exe"; fi
+          cp "$BIN" "dist/${{ matrix.artifact }}"
+          cp LICENSE dist/LICENSE
+          cp README.md dist/README.md
+          ( cd dist && sha256sum * > SHA256SUMS )
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: chrono-shift-${{ matrix.target }}
+          path: dist/*
