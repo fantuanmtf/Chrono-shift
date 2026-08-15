@@ -1,4 +1,4 @@
-# Chrono-shift v0.0.8.2
+# Chrono-shift v0.0.8.3
 
 **DC-Net + F2F 信任网 · 匿名代理网络 · 纯 Rust · Web 控制台**
 
@@ -119,6 +119,7 @@ bash scripts/verify_release.sh
 
 | 版本 | 变更 |
 |------|------|
+| v0.0.8.3 | 移除 Windows 支持：Linux 单平台、删除 installer/windows-sys/Windows CI 产物 |
 | v0.0.8.2 | v8.1 daemon + P0-P4 安全合流：真 X25519 会话加密、边密钥 DC-Net 份额、WoT 定点信任、中继加固（签名/限速/TOFU/防环）、WAL 接线、历史清理重置 |
 | v8.1 | Web 控制台、废 CLI、单二进制、纯代理架构 |
 | v8.0 | RoundEngine 实测 (跨太平洋)、PGP 握手、协议过滤、IPv6 |

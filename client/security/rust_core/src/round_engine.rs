@@ -1,4 +1,4 @@
-//! DC-Net Round Engine (v8.0 — Phase 4, v0.0.8.2 安全移植)
+//! DC-Net Round Engine (v8.0 — Phase 4, v0.0.8.3 安全移植)
 //!
 //! 职责:
 //!   1. Send: 用边密钥计算 XOR 份额 → 广播带签名的 DcRoundShare
@@ -6,7 +6,7 @@
 //!   3. Track: 单一单调 round_id（防脑裂）
 //!   4. Coordinate: 收集份额、提取消息（checksum 校验）、广播结果
 //!
-//! v0.0.8.2 移植: compute_xor_share_secure（边密钥, P1/P2）+ 份额签名验证
+//! v0.0.8.3 移植: compute_xor_share_secure（边密钥, P1/P2）+ 份额签名验证
 //!（P2）+ 新 RoundTracker 单调计数器语义 + checksum 消息帧（P2）。
 //! 注意: 每轮允许一个参与者嵌入消息；若两个参与者同时有排队消息，
 //! 提取会因 checksum 失败而丢弃（碰撞不伪造数据）。

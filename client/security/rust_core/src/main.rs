@@ -1,4 +1,4 @@
-//! Chrono-shift Daemon v0.0.8.2 — DC-Net P2P Anonymous Proxy
+//! Chrono-shift Daemon v0.0.8.3 — DC-Net P2P Anonymous Proxy
 //!
 //! Single binary: authenticated-encrypted network, DC-Net round engine,
 //! relay admission, web console at :10888.
@@ -94,7 +94,7 @@ async fn main() {
     // Start Web console
     chrono_core::web::start_web_console(shared.clone(), 10888, pid, start);
 
-    println!("chrono-daemon v0.0.8.2 started");
+    println!("chrono-daemon v0.0.8.3 started");
     println!("  PID: {}", pid);
 
     // Block forever

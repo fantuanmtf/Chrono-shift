@@ -1,4 +1,4 @@
-//! chrono-core — Chrono-shift v0.0.8.2 (纯 Rust)
+//! chrono-core — Chrono-shift v0.0.8.3 (纯 Rust)
 //!
 //! 单二进制 daemon：网络层 + DC-Net 轮次引擎 + Web 控制台。
 //! 模块: dcnet, pgp, net(会话/中继), crypto, storage, service, web,

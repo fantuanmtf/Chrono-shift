@@ -1,6 +1,6 @@
 # Chrono-shift 发布流程 (Releases)
 
-> v0.0.8.2 · 维护者: haiyan-mtf <haiyanfurry@proton.me>
+> v0.0.8.3 · 维护者: haiyan-mtf <haiyanfurry@proton.me>
 > 签名密钥: keys/haiyanfurry-mtf.asc (Ed25519)
 
 ## 产物清单
@@ -24,7 +24,7 @@ cp target/release/chrono-daemon release/chrono-daemon-linux-x86_64
 cp ../../LICENSE ../../README.md release/
 cd release && sha256sum * > SHA256SUMS
 # zip (需要 zip 或 python3)
-python3 -c "import shutil,glob; shutil.make_archive('../../chrono-bin-v0.0.8.2','zip','.')"
+python3 -c "import shutil,glob; shutil.make_archive('../../chrono-bin-v0.0.8.3','zip','.')"
 ```
 
 跨平台（可选）：推送 `v*` 标签触发 `.github/workflows/release.yml`，

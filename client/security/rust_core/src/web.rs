@@ -101,7 +101,7 @@ fn route(
                 .map(|cm| cm.connected_count())
                 .unwrap_or(0);
             let json = format!(
-                r#"{{"pid":{},"uptime_secs":{},"connections":{},"version":"0.0.8.2","tests":131}}"#,
+                r#"{{"pid":{},"uptime_secs":{},"connections":{},"version":"0.0.8.3","tests":142}}"#,
                 pid, uptime, conns
             );
             ("200 OK", "application/json", json)

@@ -1,4 +1,4 @@
-//! AppState — unified application state + event bus (v0.0.8.2)
+//! AppState — unified application state + event bus (v0.0.8.3)
 //!
 //! v8.1 daemon 结构 + P0-P4 安全嫁接:
 //!   - WAL 恢复/checkpoint 接线（P1）
