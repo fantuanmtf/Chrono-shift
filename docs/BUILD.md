@@ -1,4 +1,4 @@
-# Chrono-shift v7.7.1 构建指南
+# Chrono-shift v0.0.8.3 构建指南
 
 ## 依赖
 

@@ -6,12 +6,23 @@
 
 use crate::app::AppState;
 use crate::net::connection_manager::ConnectionManager;
-use std::io::{BufRead, BufReader, Read, Write};
+use std::io::{BufRead, BufReader, ErrorKind, Read, Write};
 use std::net::{TcpListener, TcpStream};
 use std::sync::{Arc, Mutex};
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 const INDEX_HTML: &str = include_str!("../static/index.html");
+
+/// 请求行长度上限（超限直接断开）。
+const MAX_REQUEST_LINE: usize = 8192;
+/// 单个头行长度上限。
+const MAX_HEADER_LINE: usize = 2048;
+/// 全部头字节上限。
+const MAX_HEADER_BYTES: usize = 16384;
+/// POST body 上限。
+const MAX_BODY_BYTES: usize = 65536;
+/// 连接读超时（防慢速连接挂起线程）。
+const READ_TIMEOUT_SECS: u64 = 10;
 
 pub fn start_web_console(state: Arc<Mutex<AppState>>, port: u16, pid: u32, start: Instant) {
     let addr = format!("127.0.0.1:{}", port);
@@ -34,14 +45,17 @@ pub fn start_web_console(state: Arc<Mutex<AppState>>, port: u16, pid: u32, start
 }
 
 fn handle_http(mut stream: TcpStream, state: Arc<Mutex<AppState>>, pid: u32, start: Instant) {
-    let mut reader = BufReader::new(stream.try_clone().unwrap_or_else(|_| {
-        // fallback: can't clone, just return empty
-        panic!("stream clone failed")
-    }));
+    // 读超时: 慢速连接不会永久挂起线程。
+    let _ = stream.set_read_timeout(Some(Duration::from_secs(READ_TIMEOUT_SECS)));
+    let reader_stream = match stream.try_clone() {
+        Ok(s) => s,
+        Err(_) => return,
+    };
+    let mut reader = BufReader::new(reader_stream);
 
-    // Read request line
+    // 请求行（限长）。
     let mut request_line = String::new();
-    if reader.read_line(&mut request_line).is_err() {
+    if !read_limited_line(&mut reader, &mut request_line, MAX_REQUEST_LINE).unwrap_or(false) {
         return;
     }
     let parts: Vec<&str> = request_line.split_whitespace().collect();
@@ -51,32 +65,66 @@ fn handle_http(mut stream: TcpStream, state: Arc<Mutex<AppState>>, pid: u32, sta
     let method = parts[0];
     let path = parts[1];
 
-    // Read headers (skip)
+    // 头: 限单行长度 + 总长度, 顺带解析 Content-Length。
+    let mut content_length: usize = 0;
+    let mut header_bytes = 0usize;
     loop {
         let mut line = String::new();
-        if reader.read_line(&mut line).is_err() || line == "\r\n" || line == "\n" || line.is_empty()
-        {
+        match read_limited_line(&mut reader, &mut line, MAX_HEADER_LINE) {
+            Ok(true) => {}
+            _ => return,
+        }
+        header_bytes += line.len();
+        if header_bytes > MAX_HEADER_BYTES {
+            return;
+        }
+        let trimmed = line.trim_end();
+        if trimmed.is_empty() {
             break;
+        }
+        if let Some(v) = trimmed.to_ascii_lowercase().strip_prefix("content-length:") {
+            content_length = v.trim().parse().unwrap_or(0).min(MAX_BODY_BYTES);
         }
     }
 
-    // Read body for POST
+    // body: 按 Content-Length 精确读取（上限 64KB）。
     let mut body = String::new();
-    if method == "POST" {
-        // Try to read content-length worth of data
-        let _ = reader.read_to_string(&mut body);
+    if method == "POST" && content_length > 0 {
+        let mut buf = vec![0u8; content_length];
+        if reader.read_exact(&mut buf).is_err() {
+            return;
+        }
+        body = String::from_utf8_lossy(&buf).to_string();
     }
 
     let (status, content_type, response) = route(method, path, &body, &state, pid, start);
 
+    // 安全修复: 不再发送 Access-Control-Allow-Origin: * — 本地管理控制台
+    // 不允许任意网页跨域调用 (此前恶意网页可驱动 /api/connect)。
     let resp = format!(
-        "HTTP/1.0 {} \r\nContent-Type: {}\r\nContent-Length: {}\r\nAccess-Control-Allow-Origin: *\r\nConnection: close\r\n\r\n{}",
+        "HTTP/1.0 {} \r\nContent-Type: {}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
         status,
         content_type,
         response.len(),
         response
     );
-    stream.write_all(resp.as_bytes()).ok();
+    let _ = stream.write_all(resp.as_bytes());
+}
+
+/// 读取一行, 超过 max 字节返回 Err(InvalidData)（连接随后被关闭）。
+/// 返回 Ok(false) 表示 EOF。
+fn read_limited_line<R: BufRead>(r: &mut R, out: &mut String, max: usize) -> std::io::Result<bool> {
+    let mut limited = r.take((max + 1) as u64);
+    let mut buf = Vec::new();
+    let n = limited.read_until(b'\n', &mut buf)?;
+    if n == 0 {
+        return Ok(false);
+    }
+    if n > max {
+        return Err(std::io::Error::new(ErrorKind::InvalidData, "line too long"));
+    }
+    out.push_str(&String::from_utf8_lossy(&buf));
+    Ok(true)
 }
 
 fn route(

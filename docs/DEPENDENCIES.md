@@ -1,4 +1,4 @@
-# Chrono-shift v7.7 依赖清单
+# Chrono-shift v0.0.8.3 依赖清单
 
 > 纯 Rust 项目，零 C/C++ 系统依赖
 

@@ -126,7 +126,11 @@ async fn incoming_pump(
     shared: Arc<Mutex<AppState>>,
 ) {
     loop {
-        let msg = rx.lock().unwrap().try_recv().ok();
+        // 毒化锁在这里只跳过本轮, 不 panic 杀守护进程。
+        let msg = match rx.lock() {
+            Ok(r) => r.try_recv().ok(),
+            Err(_) => None,
+        };
         if let Some((from_uid, peer_msg)) = msg {
             // P4: relay traffic has its own verified path.
             if matches!(
@@ -134,9 +138,9 @@ async fn incoming_pump(
                 chrono_core::net::tcp::PeerMessage::RelayRequest { .. }
                     | chrono_core::net::tcp::PeerMessage::RelayResponse { .. }
             ) {
-                let events = {
-                    let mut s = shared.lock().unwrap();
-                    s.handle_relay_message(&peer_msg)
+                let events = match shared.lock() {
+                    Ok(mut s) => s.handle_relay_message(&peer_msg),
+                    Err(_) => Vec::new(),
                 };
                 for e in events {
                     if let Ok(s) = shared.lock() {
@@ -149,7 +153,11 @@ async fn incoming_pump(
             let (event, outgoing) = {
                 // NOTE: never await while the AppState guard is alive
                 // (the spawned future must stay Send).
-                let mut s = shared.lock().unwrap();
+                // 毒化时直接跳过本轮 (外层循环自带 100ms 节流, 无 await 保持 future Send)。
+                let mut s = match shared.lock() {
+                    Ok(s) => s,
+                    Err(_) => continue,
+                };
                 let my_uid = s.identity.uid.clone();
                 let signing_key = s.identity.signing_key();
                 let edge_keys = s.bridge.edge_key_map();
@@ -176,8 +184,9 @@ async fn incoming_pump(
                 log::info!("RoundEvent: {:?} from {}", event, from_uid);
             }
             for (target, msg) in outgoing {
-                let s = shared.lock().unwrap();
-                let _ = s.outgoing_tx.send((target, msg));
+                if let Ok(s) = shared.lock() {
+                    let _ = s.outgoing_tx.send((target, msg));
+                }
             }
         }
         tokio::time::sleep(std::time::Duration::from_millis(100)).await;

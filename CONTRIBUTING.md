@@ -1,10 +1,10 @@
 # Contributing / 参与贡献
-Project maintainer / 项目维护：haiyanfurry
+Project maintainer / 项目维护：haiyan-mtf <haiyanfurry@proton.me>
+仓库: GitHub (fantuanmtf/Chrono-shift) + Codeberg (haiyanfurry-mtf/Chrono-Shift)
 
 ## Notice / 须知
-- This is a personal & team internal project.
-  本项目为个人+小团队内部项目。
-- All core code & security modules are locked.
-  核心逻辑与安全模块禁止随意修改。
-- Small fixes & optimization suggestions are welcome.
-  欢迎提交小型Bug修复与合理优化建议。
+- 欢迎提交 Bug 修复与优化建议（Issue / PR，两个平台任一即可）；
+- 安全相关改动必须附带攻击性测试（见 docs/DEVELOPER_GUIDE.md）；
+- 协议改动先更新 docs/PROTOCOL.md；
+- 提交前过质量门禁：cargo fmt --check + cargo clippy --release -- -D warnings + cargo test；
+- 提交作者使用 noreply 邮箱，勿暴露真实邮箱。

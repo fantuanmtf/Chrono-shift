@@ -1,245 +1,55 @@
-# Chrono-shift 开发者指南 v3.2.0
-
-> 本文档为后续开发者提供完整的项目理解、架构说明、开发规范和贡献指南。
+# Chrono-shift 开发者指南 v0.0.8.3
 
 ## 项目概览
 
-Chrono-shift 是一个纯 CLI 的 Tor/I2P 双传输层即时通讯软件。技术栈: C++23 + Rust 1.95 + NASM。
+纯 Rust 单二进制 daemon：认证加密 P2P 网络 + DC-Net 匿名广播 + Web 控制台。
+目标平台 Linux x86_64（Windows 支持已移除）。
 
-**核心差异化**: Tor 和 I2P 源码嵌入，无需用户单独安装匿名网络软件。
+## 模块结构 (client/security/rust_core/src/)
 
-## 快速上手
+| 模块 | 职责 |
+|------|------|
+| main.rs | daemon 启动：监听器/泵/心跳/web 控制台 |
+| app.rs | AppState：身份、桥、WoT、中继准入、WAL 恢复 |
+| net/session.rs | X25519+Ed25519 会话握手、加密帧（防反射/防重放） |
+| net/connection_manager.rs | 连接池：有界队列、读写超时、死连接清理、TOFU 密钥记录 |
+| net/relay.rs | 中继签名/准入/路由（重放/过期/限速/TOFU/防环） |
+| net/tcp.rs | PeerMessage 协议枚举 + 帧编解码 |
+| net/lan.rs, transport.rs, network.rs | LAN 发现、传输配置、SOCKS5（部分未接线） |
+| dcnet/round_engine.rs | DC-Net 轮次协调（Leader 收集模式） |
+| dcnet/round_network.rs | 份额构造（边密钥）、消息帧、轮次计数器、签名 |
+| dcnet/round_driver.rs | mesh 轮次驱动器（库，当前由 round_engine 承担网络路径） |
+| dcnet/f2f.rs | F2F 桥：好友、边密钥、频道、WAL 记录 |
+| dcnet/{group,round,reputation,network,shuffle}.rs | 组/轮/信誉/网络管理/洗牌 |
+| pgp/ | PgpIdentity + Web of Trust（验签 + 定点信任） |
+| identity.rs | Ed25519 身份密钥、指纹、0600 持久化 |
+| crypto.rs | AES-256-GCM、HKDF 会话派生、常量时间比较 |
+| storage.rs | WAL + 原子 checkpoint + 社交快照 |
+| service.rs / web.rs / address_book.rs / protocol_filter.rs | F2F 服务代理 / 控制台 / 地址簿 / 协议过滤 |
+| ffi.rs | C ABI（unsafe 标记 + panic 防护） |
+| ratchet.rs | 弃用（已知缺陷未接线，勿依赖） |
 
-### 环境要求
-
-| 工具 | 最低版本 | 安装方式 |
-|------|---------|---------|
-| GCC (MinGW) | 13.0+ | MSYS2: `pacman -S mingw-w64-x86_64-gcc` |
-| CMake | 3.20+ | MSYS2: `pacman -S mingw-w64-x86_64-cmake` |
-| OpenSSL | 3.0+ | MSYS2: `pacman -S mingw-w64-x86_64-openssl` |
-| Rust | 1.70+ | `curl --proto '=https' -sSf https://sh.rustup.rs \| sh` |
-| NASM | 2.16+ | MSYS2: `pacman -S mingw-w64-x86_64-nasm` |
-| Python | 3.8+ | 用于 CVE 审计脚本 |
-
-### 首次编译
+## 构建与测试
 
 ```bash
-# 1. 克隆 (含子模块)
-git clone <repo-url> && cd Chrono-shift
-
-# 2. 编译 Rust 安全核心
 cd client/security/rust_core
-cargo build --release
-
-# 3. 编译主程序
-cd ../..
-cmake -B build -G "MinGW Makefiles"
-cmake --build build -j$(nproc)
-
-# 4. 运行
-./build/chrono-client.exe
-```
-
-## 源代码导航
-
-```
-Chrono-shift/
-├── client/
-│   ├── src/                   ← 核心源码 (153 C/C++ 文件)
-│   │   ├── ai/                ← AI 提供商 (OpenAI/Gemini/DeepSeek)
-│   │   ├── crypto/            ← 加密工具 (SecureRandom/TorProxy)
-│   │   ├── glue/              ← 胶水层 (TransportInterface/MessageRouter/Bridge)
-│   │   ├── i2p/               ← I2P 客户端 (SamClient/I2pdEmbedded/IntegrityCheck)
-│   │   ├── network/           ← 网络栈 (TcpConnection/TlsWrapper/WebSocket/Socks5Dns)
-│   │   ├── plugin/            ← 插件系统接口
-│   │   ├── security/          ← 安全 (CveDatabase/DependencyScanner)
-│   │   ├── social/            ← 社交管理器 (好友/消息/信任)
-│   │   ├── storage/           ← 本地存储 (LocalStorage/SessionManager)
-│   │   ├── tor/               ← Tor 客户端 (TorClient/TorEmbedded)
-│   │   └── util/              ← 工具函数 (Logger/Utils)
-│   ├── devtools/cli/          ← CLI REPL + 命令实现
-│   │   ├── main.cpp           ← 入口点 (REPL 循环)
-│   │   ├── commands/          ← 22个命令模块
-│   │   └── terminal_style.h   ← 终端美化
-│   ├── include/               ← 公共头文件
-│   ├── vendor/                ← Tor & i2pd 源码嵌入
-│   │   ├── tor_src/           ← Tor 完整 C 源码 (48MB)
-│   │   ├── i2pd_lib/          ← i2pd 核心 C++ 源码
-│   │   ├── i2pd_client/       ← i2pd 客户端库
-│   │   ├── tor_bridge.c       ← Tor 嵌入桥接
-│   │   └── i2pd_bridge.cpp    ← i2pd 嵌入桥接
-│   └── security/
-│       ├── rust_core/         ← Rust 安全核心 (6文件)
-│       └── asm/               ← NASM 混淆 (ChronoStream v1)
-├── data/ui/                   ← Web UI (存档, Phase 2)
-├── docs/                      ← 文档
-├── scripts/                   ← 构建/审计/测试脚本
-└── tests/                     ← 测试
-```
-
-## 架构设计
-
-### 分层架构
-
-```
-┌─────────────────────────────────────┐
-│  CLI 接口 (main.cpp + 28命令)        │
-├─────────────────────────────────────┤
-│  胶水层 (glue/)                      │
-│  ┌──────────┬──────────┬──────────┐ │
-│  │ Transport │ Message  │ Social   │ │
-│  │ Interface │ Router   │ Manager  │ │
-│  │ (抽象)    │ (跨传输) │ (好友)   │ │
-│  └──────────┴──────────┴──────────┘ │
-├─────────────────────────────────────┤
-│  传输层                              │
-│  ┌──────────┬──────────┬──────────┐ │
-│  │ Tor      │ I2P      │ Local    │ │
-│  │ (SOCKS5) │ (SAM v3) │ (模拟)   │ │
-│  └──────────┴──────────┴──────────┘ │
-├─────────────────────────────────────┤
-│  安全层                              │
-│  ┌──────────┬──────────┬──────────┐ │
-│  │ E2E加密  │ 完整性   │ CVE审计  │ │
-│  │ (Rust)   │ (SHA256) │ (347K条) │ │
-│  └──────────┴──────────┴──────────┘ │
-├─────────────────────────────────────┤
-│  网络层 (TCP/TLS/WebSocket/DNS安全) │
-└─────────────────────────────────────┘
-```
-
-### 启动流程
-
-```
-main()
-├── config_init_defaults()      ← 加载默认配置
-├── init_commands()             ← 注册所有28个命令
-├── SocialManager::load_state() ← 加载社交状态
-├── try_auto_connect_i2p()      ← 自动启动i2pd
-│   ├── is_port_open(7656)      ← 端口检测(防重复)
-│   ├── is_process_running()    ← 进程检测(防重复)
-│   └── IntegrityCheck::verify()← SHA256防篡改
-├── 显示待处理好友请求
-└── REPL 循环 (chrono →)
-```
-
-### 命令注册流程
-
-```
-main.cpp
-  → init_commands()
-    → init_cmd_*() for each module
-      → register_command(name, desc, usage, handler)
-        → g_command_table[]  + g_command_registry.add()
+cargo build --release          # 产物 target/release/chrono-daemon
+cargo test --release           # 142 tests
+cargo clippy --release -- -D warnings
+cargo fmt --check
 ```
 
 ## 开发规范
 
-### 添加新命令
+1. **安全声明必须配攻击性测试**（伪造/重放/越权/错误密钥场景）；
+2. **无占位代码**：未接线的功能要么删除要么在文档中如实标注；
+3. **密钥纪律**：敏感文件 0600、比较常量时间、密钥 zeroize；
+4. **版本单一来源**：Cargo.toml 版本 + 用户可见字符串同步更新；
+5. **先文档后代码**：协议改动先改 docs/PROTOCOL.md 再改实现；
+6. 提交作者用 noreply 邮箱（256490970+fantuanmtf@users.noreply.github.com），
+   避免暴露真实邮箱（GitHub 设置已开启 block-push 保护）。
 
-```cpp
-// 1. 创建 client/devtools/cli/commands/cmd_new.cpp
-static int cmd_new(int argc, char** argv) {
-    // 命令逻辑
-    return 0;
-}
-extern "C" int init_cmd_new(void) {
-    register_command("new", "新命令描述", "new <args>", cmd_new);
-    return 0;
-}
+## 发布
 
-// 2. 在 init_commands.cpp 中添加:
-extern int init_cmd_new(void);  // 声明
-init_cmd_new();                  // 调用
-
-// 3. CMakeLists.txt 的 CLI_CPP_SOURCES 中添加:
-devtools/cli/commands/cmd_new.cpp
-```
-
-### 添加新传输层
-
-```cpp
-// 1. 创建 client/src/xxx/XxxClient.h (实现 TransportInterface)
-class XxxClient : public glue::TransportInterface {
-    bool start() override;
-    void stop() override;
-    TransportKind kind() const override;
-    TransportState get_state() const override;
-    bool send(const std::string&, const std::string&) override;
-    void on_receive(ReceiveCallback) override;
-    std::string lookup(const std::string&) override;
-};
-
-// 2. 在 glue/GlueTypes.h 添加 TransportKind 枚举值
-// 3. 在 main.cpp 注册
-```
-
-### 安全规范
-
-1. **随机数**: 必须使用 `SecureRandom` (C++) 或 `OsRng` (Rust)，禁止 `rand()`/`srand()`
-2. **DNS**: 使用 `Socks5Dns::resolve_and_connect()`，禁止 `gethostbyname()`
-3. **加密**: 仅 AES-256-GCM，禁止自研密码用于生产
-4. **内存**: Rust 模块处理所有解析和加密，C++ 仅做胶水
-5. **JSON**: 禁止字符串拼接，使用 `json_build_response()` 或 Rust `serde_json`
-
-### 构建规范
-
-- Rust crate 在 `client/security/rust_core/`，Cargo.toml 管理
-- NASM 汇编在 `client/security/asm/`
-- Tor/i2pd 源码在 `client/vendor/` (源码嵌入，按需编译)
-- `.gitignore` + `.gitattributes` 已配置 (排二进制, 语言统计)
-
-## 测试
-
-```bash
-# Rust 单元测试
-cd client/security/rust_core && cargo test --release
-
-# C++ 功能测试 (CLI)
-cd client/build
-echo "crypto test" | ./chrono-client.exe
-
-# 全量测试
-printf "crypto test\nuid set test\nfriend add demo\nfriend accept demo\nmsg send demo hello\nexit\n" | ./chrono-client.exe
-
-# CVE 审计
-python scripts/cve_audit.py --all
-
-# 依赖版本检查
-python scripts/check_dependencies.py
-```
-
-## 常见问题
-
-**Q: GitHub 显示 Makefile 为主要语言?**
-A: `.gitattributes` 已标记 Makefile 为 `linguist-generated`。提交后刷新。
-
-**Q: Rust 库编译失败?**
-A: 检查 Rust 版本 ≥ 1.70，运行 `cargo update` 更新依赖。
-
-**Q: i2pd 重复启动?**
-A: `I2pdEmbedded::start()` 先检查端口 7656 是否已开放，已运行则不重复启动。
-
-**Q: Tor 在中国无法连接?**
-A: 需要在 `tor_data/torrc` 配置网桥 (bridge)。参见 `docs/TRANSPORT.md`。
-
-**Q: 如何迁移 C++ 到 Rust?**
-A: 参见 `docs/RUST_MIGRATION.md`。推荐先迁移网络层 (最大安全收益)。
-
-## 贡献流程
-
-1. Fork 仓库
-2. 创建功能分支
-3. 添加/修改代码
-4. 运行 `cargo test` + CLI 功能测试
-5. 运行 `python scripts/cve_audit.py --year=2025` (快速CVE检查)
-6. 提交 PR，标记 `security` 如有安全相关变更
-
-## 未来路线图
-
-- [ ] C++ → Rust 全量迁移 (Phase 1: 网络层)
-- [ ] i2pd 生产就绪 (Reseed 优化)
-- [ ] GUI 桌面版 (基于胶水层 GlueLayer)
-- [ ] 移动端 (Rust core + Flutter)
-- [ ] 去中心化 DHT 节点发现
-- [ ] 文件传输 + 语音通话
+见 docs/RELEASES.md：构建 → 打包 → PGP 签名 (scripts/sign_release.sh) →
+验证 (scripts/verify_release.sh) → GitHub + Codeberg Releases。

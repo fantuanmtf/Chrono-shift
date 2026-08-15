@@ -115,6 +115,24 @@ gpg --import keys/haiyanfurry-mtf.asc   # 维护者公钥: haiyan-mtf <haiyanfur
 bash scripts/verify_release.sh
 ```
 
+## 文档
+
+| 文档 | 内容 |
+|------|------|
+| [docs/BUILD.md](docs/BUILD.md) | 构建指南 |
+| [docs/PROTOCOL.md](docs/PROTOCOL.md) | 通信协议（会话握手/DC-Net 轮次/中继/信任） |
+| [docs/TESTING.md](docs/TESTING.md) | 测试指南（质量门禁 + 攻击性测试惯例） |
+| [docs/RELEASES.md](docs/RELEASES.md) | 发布流程（打包 + PGP 签名 + 验证） |
+| [docs/DEVELOPER_GUIDE.md](docs/DEVELOPER_GUIDE.md) | 开发者指南（模块结构 + 开发规范） |
+| [docs/DEVELOPMENT_PLAN.md](docs/DEVELOPMENT_PLAN.md) | 安全路线图 P0-P4（已全部落地） |
+| [docs/DC_NET_ROADMAP.md](docs/DC_NET_ROADMAP.md) | 版本路线图与后续候选 |
+| [docs/HANDOVER.md](docs/HANDOVER.md) | 交接文档 |
+| [docs/TRANSPORT.md](docs/TRANSPORT.md) | 传输层说明（含未接线项） |
+| [SECURITY.md](SECURITY.md) | 威胁模型与安全边界 |
+| [SECURITY_POLICY.md](SECURITY_POLICY.md) | 漏洞报告与支持策略 |
+
+> docs/ 下带“归档”标注的为历史审计/计划文档，仅作记录参考。
+
 ## 更新日志
 
 | 版本 | 变更 |

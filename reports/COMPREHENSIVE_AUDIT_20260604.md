@@ -1,5 +1,8 @@
 # Chrono-shift 全面代码审计报告
 
+> **归档**：历史文档，仅作记录参考，不代表当前实现。当前文档见 docs/ 与 README。
+
+
 **审计日期**: 2026-06-04  
 **审计范围**: `client/security/rust_core/src/` 全部源码 + Cargo.toml + tests/ + docs/  
 **代码行数**: ~3,500 行 Rust (含注释), ~1,500 行测试脚本 (bash)  

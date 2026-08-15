@@ -1,5 +1,8 @@
 # Chrono-shift v5.0 四步开发计划
 
+> **归档**：历史文档，仅作记录参考，不代表当前实现。当前文档见 docs/ 与 README。
+
+
 ## Step 1: DC-Net + F2F 核心 (Rust)
 
 ```

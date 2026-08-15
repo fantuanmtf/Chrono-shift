@@ -1,34 +1,30 @@
 # Chrono-shift 安全策略
 
-## 漏洞报告
-
-发现安全漏洞请通过 GitHub Issues 报告，标记 `security` 标签。
-严重漏洞可直接联系项目维护者。
-
 ## 支持版本
 
 | 版本 | 支持状态 |
-|------|---------|
-| v3.2.x | 积极支持 |
-| v3.1.x | 安全更新 |
-| < v3.0 | 不再支持 |
+|------|----------|
+| v0.0.8.x | 积极支持（当前） |
+| 更早版本 | 不再支持 |
+
+## 漏洞报告
+
+- **GitHub**：https://github.com/fantuanmtf/Chrono-shift → Issues，标 `security` 标签；
+- **Codeberg**：https://codeberg.org/haiyanfurry-mtf/Chrono-Shift/issues；
+- **紧急/敏感**：PGP 加密邮件至维护者 haiyan-mtf <haiyanfurry@proton.me>
+  （公钥见 keys/haiyanfurry-mtf.asc）。
+
+请提供：影响版本、复现步骤、影响评估；确认后 7 天内回复。
 
 ## 审计周期
 
-- CVE 全量扫描: 每月运行 `python scripts/cve_audit.py --all`
-- 依赖版本检查: 每周运行 `python scripts/check_dependencies.py`
-- 代码安全审计: 每季度
+- 每季度：全量代码审查（cargo clippy -D warnings + 手工审查安全关键路径）；
+- 每次发布前：cargo test 全量 + 攻击性测试复核；
+- 依赖检查：`cargo update` 前人工审查变更（当前无自动 CVE 扫描器，
+  旧的 cve.rs 模块已随 CLI 移除）。
 
-## 安全架构
+## 密钥与签名
 
-```
-[用户输入] → [Rust parser (防注入)] → [E2E AES-256-GCM] → [Tor/I2P SOCKS5]
-                                                    ↓
-                                           [SecureRandom (CSPRNG)]
-```
-
-- 所有网络流量通过 Tor SOCKS5 或 I2P SAM 代理
-- DNS 解析在代理侧完成，无泄漏
-- 密码学随机数使用 BCryptGenRandom / OsRng
-- JSON 解析使用 Rust serde_json (防溢出)
-- E2E 加密使用 AES-256-GCM (恒定时间实现)
+- 发布产物全部 PGP 签名（流程见 docs/RELEASES.md）；
+- 签名密钥指纹：F11B C5BB A9C9 32B2 79C8 55CC F0EE 9751 EB48 1A8D；
+- 密钥轮换时在 Release 说明中声明新指纹。
