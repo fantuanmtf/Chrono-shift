@@ -20,8 +20,8 @@
 
 - 每季度：全量代码审查（cargo clippy -D warnings + 手工审查安全关键路径）；
 - 每次发布前：cargo test 全量 + 攻击性测试复核；
-- 依赖检查：`cargo update` 前人工审查变更（当前无自动 CVE 扫描器，
-  旧的 cve.rs 模块已随 CLI 移除）。
+- 依赖检查：CI 每次推送运行 `cargo audit --deny warnings`（RustSec 公告库）；
+  `cargo update` 前仍人工审查变更摘要。
 
 ## 密钥与签名
 

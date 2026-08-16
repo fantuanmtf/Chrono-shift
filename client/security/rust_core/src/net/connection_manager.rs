@@ -21,6 +21,7 @@ use crate::net::session::{self, SessionAuth};
 use crate::net::tcp::PeerMessage;
 use std::collections::HashMap;
 use std::net::SocketAddr;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{mpsc, Arc, Mutex};
 use std::time::{Duration, Instant};
 
@@ -41,7 +42,10 @@ pub struct PeerInfo {
 /// Capacity of each connection's outbound queue (backpressure: when full,
 /// try_send fails and the caller sees a send error instead of unbounded
 /// memory growth on a slow peer).
-pub const WRITER_QUEUE_CAP: usize = 256;
+///
+/// v0.0.9: 256 → 64. With a 64 KiB max frame this bounds per-peer in-flight
+/// buffering to at most 64 × 64 KiB = 4 MiB.
+pub const WRITER_QUEUE_CAP: usize = 64;
 
 /// Idle read timeout: a peer that sends nothing for this long is declared
 /// dead and the connection is cleaned up.
@@ -49,6 +53,10 @@ pub const READ_IDLE_TIMEOUT_SECS: u64 = 90;
 
 /// Per-frame write timeout (slow/congested peers).
 pub const WRITE_TIMEOUT_SECS: u64 = 15;
+
+/// Global cap on simultaneous established connections (resource-DoS bound).
+/// Inbound accepts past this are refused before the handshake.
+pub const MAX_CONNECTIONS: usize = 256;
 
 /// Connection id counter (unique per connection; reused uids get new ids).
 static NEXT_CONN_ID: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
@@ -67,6 +75,21 @@ impl PeerWriter {
         let (tx, rx) = tokio::sync::mpsc::channel(WRITER_QUEUE_CAP);
         let conn_id = NEXT_CONN_ID.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         (Self { tx, conn_id }, rx)
+    }
+}
+
+/// Decrements the global connection counter exactly once when dropped.
+/// Held by each connection task across its whole lifecycle (handshake
+/// included) so a connection that dies — or fails the handshake — always
+/// releases its slot, while reader and writer can each still call
+/// remove_connection without double-decrementing.
+struct ConnectionGuard {
+    count: Arc<AtomicUsize>,
+}
+
+impl Drop for ConnectionGuard {
+    fn drop(&mut self) {
+        self.count.fetch_sub(1, Ordering::Relaxed);
     }
 }
 
@@ -208,12 +231,17 @@ impl ConnectionManager {
     pub async fn start_listener(
         port: u16,
         active: Arc<Mutex<HashMap<String, PeerWriter>>>,
-        incoming_tx: mpsc::Sender<(String, PeerMessage)>,
+        incoming_tx: mpsc::SyncSender<(String, PeerMessage)>,
         public_hex: String,
         signing_key: ed25519_dalek::SigningKey,
         uid_shared: Arc<Mutex<String>>,
         known_keys: Arc<Mutex<HashMap<String, String>>>,
     ) {
+        // Global connection cap: refuse accepts past MAX_CONNECTIONS. The
+        // counter is incremented on accept and released once by a drop guard
+        // held across the connection's whole lifecycle.
+        let conn_count: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(0));
+
         // v8.1 port: IPv6 dual-stack first, IPv4 fallback.
         let listener = match tokio::net::TcpListener::bind(format!("[::]:{}", port)).await {
             Ok(l) => {
@@ -235,6 +263,18 @@ impl ConnectionManager {
         loop {
             match listener.accept().await {
                 Ok((mut stream, addr)) => {
+                    // Refuse the accept once we're at the global cap.
+                    let slots = conn_count.fetch_add(1, Ordering::Relaxed);
+                    if slots >= MAX_CONNECTIONS {
+                        conn_count.fetch_sub(1, Ordering::Relaxed);
+                        log::warn!(
+                            "Connection limit reached ({} active); dropping {}",
+                            MAX_CONNECTIONS,
+                            addr
+                        );
+                        drop(stream);
+                        continue;
+                    }
                     log::info!("Incoming connection from {}", addr);
                     let auth = SessionAuth {
                         uid: uid_shared.lock().map(|u| u.clone()).unwrap_or_default(),
@@ -244,7 +284,13 @@ impl ConnectionManager {
                     let keys = known_keys.clone();
                     let active = active.clone();
                     let tx = incoming_tx.clone();
+                    let conn_count = conn_count.clone();
                     tokio::spawn(async move {
+                        // Release the connection slot exactly once when this
+                        // connection's lifecycle ends (handshake failure or
+                        // either half finishing).
+                        let _guard = ConnectionGuard { count: conn_count };
+
                         // Authenticate + agree on session keys before any
                         // application data is exchanged.
                         let handshake = tokio::time::timeout(
@@ -266,9 +312,18 @@ impl ConnectionManager {
 
                         // TOFU: pin the peer's claimed identity key so later
                         // per-message signatures (DC-Net shares, relay) verify.
-                        if let Ok(mut k) = keys.lock() {
-                            k.entry(session.peer_uid.clone())
-                                .or_insert_with(|| session.peer_public_hex.clone());
+                        // Only authenticated peers get pinned — an unverified
+                        // key must not poison later lookups.
+                        if session.peer_authenticated {
+                            if let Ok(mut k) = keys.lock() {
+                                k.entry(session.peer_uid.clone())
+                                    .or_insert_with(|| session.peer_public_hex.clone());
+                            }
+                        } else {
+                            log::warn!(
+                                "Not pinning identity key for unauthenticated peer {}",
+                                session.peer_uid
+                            );
                         }
 
                         let (read_half, write_half) = stream.into_split();
@@ -282,15 +337,9 @@ impl ConnectionManager {
                                 Err(_) => return,
                             }
                         }
-                        tokio::spawn(connection_writer(
-                            write_half,
-                            rx,
-                            session.send_key,
-                            active.clone(),
-                            session.peer_uid.clone(),
-                            conn_id,
-                        ));
-                        tokio::spawn(connection_reader(
+                        // Run reader + writer in one task so the guard above
+                        // drops exactly once when both halves finish.
+                        let reader = connection_reader(
                             read_half,
                             ReaderCtx {
                                 addr,
@@ -301,7 +350,16 @@ impl ConnectionManager {
                                 active: active.clone(),
                                 conn_id,
                             },
-                        ));
+                        );
+                        let writer = connection_writer(
+                            write_half,
+                            rx,
+                            session.send_key,
+                            active.clone(),
+                            session.peer_uid.clone(),
+                            conn_id,
+                        );
+                        tokio::join!(reader, writer);
                     });
                 }
                 Err(e) => {
@@ -323,7 +381,7 @@ impl ConnectionManager {
         uid: &str,
         addr: SocketAddr,
         auth: &SessionAuth,
-        incoming_tx: mpsc::Sender<(String, PeerMessage)>,
+        incoming_tx: mpsc::SyncSender<(String, PeerMessage)>,
     ) -> Result<(), std::io::Error> {
         let mut stream = tokio::net::TcpStream::connect(addr).await?;
 
@@ -342,10 +400,26 @@ impl ConnectionManager {
             ));
         }
 
+        if !session.peer_authenticated {
+            log::warn!(
+                "session encrypted but unauthenticated; only Ping/Pong allowed (peer {})",
+                session.peer_uid
+            );
+        }
+
         // TOFU: pin the peer's claimed identity key (same as the listener).
-        if let Ok(mut k) = known_keys.lock() {
-            k.entry(session.peer_uid.clone())
-                .or_insert_with(|| session.peer_public_hex.clone());
+        // Only authenticated peers get pinned — an unverified key must not
+        // poison later lookups.
+        if session.peer_authenticated {
+            if let Ok(mut k) = known_keys.lock() {
+                k.entry(session.peer_uid.clone())
+                    .or_insert_with(|| session.peer_public_hex.clone());
+            }
+        } else {
+            log::warn!(
+                "Not pinning identity key for unauthenticated peer {}",
+                session.peer_uid
+            );
         }
 
         let (read_half, write_half) = stream.into_split();
@@ -473,7 +547,7 @@ async fn connection_writer(
 /// Everything a reader task needs besides the stream half.
 struct ReaderCtx {
     addr: SocketAddr,
-    incoming_tx: mpsc::Sender<(String, PeerMessage)>,
+    incoming_tx: mpsc::SyncSender<(String, PeerMessage)>,
     recv_key: [u8; 32],
     peer_uid: String,
     peer_authenticated: bool,
@@ -522,6 +596,20 @@ async fn connection_reader(mut read_half: tokio::net::tcp::OwnedReadHalf, ctx: R
             Ok(text) => {
                 if let Some(msg) = PeerMessage::from_json(&text) {
                     let claimed_uid = extract_uid(&msg, &addr);
+                    if !crate::validate_uid(&claimed_uid) {
+                        log::warn!("Dropping message with invalid claimed uid from {}", addr);
+                        continue;
+                    }
+                    // Unauthenticated sessions may only exchange keepalives.
+                    // Everything else — including relay traffic — is refused,
+                    // since an unverified peer must not relay for us.
+                    if !peer_authenticated && !allowed_unauthenticated(&msg) {
+                        log::warn!(
+                            "Dropping message from unauthenticated session with {} (only Ping/Pong allowed)",
+                            peer_uid
+                        );
+                        continue;
+                    }
                     // Bind identity: messages must come from the uid that
                     // authenticated in the handshake. Anonymous types
                     // (Ping/Pong) are routed under the peer uid.
@@ -544,8 +632,18 @@ async fn connection_reader(mut read_half: tokio::net::tcp::OwnedReadHalf, ctx: R
                         );
                         continue;
                     }
-                    let _ = peer_authenticated; // surfaced via logs for now
-                    incoming_tx.send((peer_uid.clone(), msg)).ok();
+                    match incoming_tx.try_send((peer_uid.clone(), msg)) {
+                        Ok(()) => {}
+                        Err(mpsc::TrySendError::Full(_)) => {
+                            log::warn!(
+                                "Inbound queue full; dropping message from {} (rate limiting)",
+                                peer_uid
+                            );
+                        }
+                        Err(mpsc::TrySendError::Disconnected(_)) => {
+                            // Receiver gone; nothing to do.
+                        }
+                    }
                 }
             }
             Err(_) => {
@@ -555,6 +653,13 @@ async fn connection_reader(mut read_half: tokio::net::tcp::OwnedReadHalf, ctx: R
     }
     ConnectionManager::remove_connection(&active, &peer_uid, conn_id);
     log::info!("Connection reader from {} closed", addr);
+}
+
+/// Which PeerMessage variants an UNAUTHENTICATED session may still exchange.
+/// Only keepalives pass; everything else (including relay) is dropped so an
+/// unverified peer cannot relay or inject application traffic.
+fn allowed_unauthenticated(msg: &PeerMessage) -> bool {
+    matches!(msg, PeerMessage::Ping { .. } | PeerMessage::Pong { .. })
 }
 
 /// Extract a best-effort UID from a PeerMessage for routing
@@ -657,6 +762,37 @@ mod tests {
         let id = active.lock().unwrap()["bob"].conn_id;
         ConnectionManager::remove_connection(&active, "bob", id);
         assert!(!active.lock().unwrap().contains_key("bob"));
+    }
+
+    #[test]
+    fn test_unauthenticated_whitelist_only_ping_pong() {
+        assert!(allowed_unauthenticated(&PeerMessage::Ping { ts: 1 }));
+        assert!(allowed_unauthenticated(&PeerMessage::Pong { ts: 1 }));
+        assert!(!allowed_unauthenticated(&PeerMessage::RelayRequest {
+            from_uid: "alice".into(),
+            to_uid: "bob".into(),
+            origin_key_hex: "k".into(),
+            nonce: 1,
+            timestamp: 1,
+            hops_left: 8,
+            signature: vec![],
+            encrypted_payload: vec![],
+        }));
+        assert!(!allowed_unauthenticated(&PeerMessage::RelayResponse {
+            from_uid: "alice".into(),
+            to_uid: "bob".into(),
+            origin_key_hex: "k".into(),
+            nonce: 1,
+            timestamp: 1,
+            hops_left: 8,
+            signature: vec![],
+            encrypted_payload: vec![],
+        }));
+        assert!(!allowed_unauthenticated(&PeerMessage::ChannelMessage {
+            channel: "c".into(),
+            from_uid: "alice".into(),
+            text: "hi".into(),
+        }));
     }
 
     #[test]

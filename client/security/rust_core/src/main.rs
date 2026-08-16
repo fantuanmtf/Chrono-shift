@@ -1,4 +1,4 @@
-//! Chrono-shift Daemon v0.0.8.3 — DC-Net P2P Anonymous Proxy
+//! Chrono-shift Daemon v0.0.9 — DC-Net P2P Anonymous Proxy
 //!
 //! Single binary: authenticated-encrypted network, DC-Net round engine,
 //! relay admission, web console at :10888.
@@ -94,7 +94,7 @@ async fn main() {
     // Start Web console
     chrono_core::web::start_web_console(shared.clone(), 10888, pid, start);
 
-    println!("chrono-daemon v0.0.8.3 started");
+    println!("chrono-daemon v0.0.9 started");
     println!("  PID: {}", pid);
 
     // Block forever
@@ -127,11 +127,29 @@ async fn incoming_pump(
 ) {
     loop {
         // 毒化锁在这里只跳过本轮, 不 panic 杀守护进程。
-        let msg = match rx.lock() {
-            Ok(r) => r.try_recv().ok(),
-            Err(_) => None,
+        // 只在此处短暂持有 rx 锁并把队列一次性排空到本地 Vec ——
+        // MutexGuard<Receiver> 不是 Send, 不能跨 await 持有。
+        let mut batch: Vec<(String, chrono_core::net::tcp::PeerMessage)> = Vec::new();
+        let poisoned = {
+            let locked = rx.lock();
+            match locked {
+                Ok(r) => {
+                    while let Ok(msg) = r.try_recv() {
+                        batch.push(msg);
+                    }
+                    false
+                }
+                Err(_) => true,
+            }
         };
-        if let Some((from_uid, peer_msg)) = msg {
+        if poisoned {
+            tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+            continue;
+        }
+
+        // 批量排空: 逐条处理直到本批清空, 之后再 sleep 50ms 进入下一轮。
+        let mut relay_batch: u32 = 0;
+        for (from_uid, peer_msg) in batch {
             // P4: relay traffic has its own verified path.
             if matches!(
                 peer_msg,
@@ -147,13 +165,17 @@ async fn incoming_pump(
                         s.emit(e);
                     }
                 }
-                tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+                // 每处理 32 条中继才让出 10ms, 避免清空循环中完全不让出。
+                relay_batch += 1;
+                if relay_batch % 32 == 0 {
+                    tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+                }
                 continue;
             }
             let (event, outgoing) = {
                 // NOTE: never await while the AppState guard is alive
                 // (the spawned future must stay Send).
-                // 毒化时直接跳过本轮 (外层循环自带 100ms 节流, 无 await 保持 future Send)。
+                // 毒化时直接跳过本条 (继续处理下一条)。
                 let mut s = match shared.lock() {
                     Ok(s) => s,
                     Err(_) => continue,
@@ -189,6 +211,6 @@ async fn incoming_pump(
                 }
             }
         }
-        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
     }
 }

@@ -713,8 +713,8 @@ mod tests {
 
     #[test]
     fn test_missing_edge_key_refuses_round() {
-        let mut alice = node("alice");
-        let mut bob = node("bob");
+        let alice = node("alice");
+        let _bob = node("bob");
         // no pair() call — alice has no edge key for bob
         let participants = vec!["alice".to_string(), "bob".to_string()];
         let sk_a = alice.id.signing_key().expect("sk");

@@ -20,6 +20,11 @@ use std::path::PathBuf;
 use std::sync::mpsc;
 use std::sync::{Arc, Mutex};
 
+/// Bounded event channel capacity (backpressure for UI consumers).
+const EVENT_CHANNEL_CAP: usize = 4096;
+/// Bounded inbound message channel capacity (reader tasks → message pump).
+const INCOMING_CHANNEL_CAP: usize = 1024;
+
 /// Application-wide events
 #[derive(Debug, Clone)]
 pub enum AppEvent {
@@ -40,14 +45,14 @@ pub struct AppState {
     pub connection_manager: Arc<Mutex<ConnectionManager>>,
     pub round_engine: RoundEngine,
     pub data_dir: PathBuf,
-    pub event_tx: mpsc::Sender<AppEvent>,
+    pub event_tx: mpsc::SyncSender<AppEvent>,
     event_rx: mpsc::Receiver<AppEvent>,
     pub messages: Vec<(String, String, String)>,
     pub outgoing_tx: mpsc::Sender<(String, PeerMessage)>,
     pub incoming_rx: Arc<Mutex<mpsc::Receiver<(String, PeerMessage)>>>,
     pub outgoing_rx: Option<mpsc::Receiver<(String, PeerMessage)>>,
     /// Inbound sender (Clone, shared with outbound connection readers).
-    pub incoming_tx: mpsc::Sender<(String, PeerMessage)>,
+    pub incoming_tx: mpsc::SyncSender<(String, PeerMessage)>,
     /// P4: Web of Trust.
     pub wot: WebOfTrust,
     /// P4: relay admission control (replay/expiry/rate/TOFU).
@@ -115,9 +120,10 @@ impl AppState {
             bridge.attach_wal(wal);
         }
 
-        let (event_tx, event_rx) = mpsc::channel::<AppEvent>();
+        let (event_tx, event_rx) = mpsc::sync_channel::<AppEvent>(EVENT_CHANNEL_CAP);
         let (outgoing_tx, outgoing_rx) = mpsc::channel::<(String, PeerMessage)>();
-        let (incoming_tx, incoming_rx) = mpsc::channel::<(String, PeerMessage)>();
+        let (incoming_tx, incoming_rx) =
+            mpsc::sync_channel::<(String, PeerMessage)>(INCOMING_CHANNEL_CAP);
         let conn_mgr = ConnectionManager::new(listen_port);
 
         Self {
@@ -305,7 +311,7 @@ impl AppState {
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap_or_default()
             .as_secs();
-        if let Err(e) = self.relay_verifier.check(&from_uid, nonce, timestamp, now) {
+        if let Err(e) = self.relay_verifier.check(&key_hex, nonce, timestamp, now) {
             log::warn!("Relay from {} rejected: {}", from_uid, e);
             return Vec::new();
         }
@@ -315,6 +321,15 @@ impl AppState {
             return vec![AppEvent::Info {
                 message: format!("relay from {}: {} bytes", from_uid, payload.len()),
             }];
+        }
+        if !relay::valid_inbound_hops(hops_left) {
+            log::warn!(
+                "Dropping relay message for {}: hops_left {} exceeds maximum {}",
+                to_uid,
+                hops_left,
+                relay::RELAY_MAX_HOPS
+            );
+            return Vec::new();
         }
         if hops_left == 0 {
             log::warn!("Dropping relay message for {}: no hops left", to_uid);

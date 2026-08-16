@@ -44,3 +44,10 @@ jobs:
       - name: Test
         working-directory: client/security/rust_core
         run: cargo test --release
+
+      - name: Install cargo-audit
+        run: cargo install cargo-audit --locked
+
+      - name: Audit dependencies (RustSec)
+        working-directory: client/security/rust_core
+        run: cargo audit --deny warnings

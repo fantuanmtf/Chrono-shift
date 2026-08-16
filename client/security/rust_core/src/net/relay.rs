@@ -30,6 +30,14 @@ pub const RELAY_MAX_AGE_SECS: u64 = 60;
 pub const RELAY_RATE_WINDOW_SECS: u64 = 60;
 pub const RELAY_MAX_PER_WINDOW: u32 = 60;
 
+/// Anti-memory-DoS bounds for the relay verifier's tables. When a table
+/// reaches this many entries it is cleared wholesale (coarse-grained
+/// eviction) rather than letting a flood of fake identities grow it without
+/// bound. `last_nonce` and `rate` are keyed by the verified identity key,
+/// so they share MAX_RELAY_TRACKED; `key_pins` uses MAX_RELAY_PINS.
+pub const MAX_RELAY_TRACKED: usize = 4096;
+pub const MAX_RELAY_PINS: usize = 4096;
+
 /// The exact bytes a relay signature covers. hops_left is deliberately
 /// excluded so relays can decrement it without invalidating the signature.
 pub fn relay_signature_message(
@@ -94,6 +102,13 @@ pub fn parse_verifying_key(key_hex: &str) -> Option<VerifyingKey> {
     let bytes = hex_decode(key_hex)?;
     let arr = <[u8; 32]>::try_from(bytes).ok()?;
     VerifyingKey::from_bytes(&arr).ok()
+}
+
+/// Inbound hops guard: a relayed message must never present a `hops_left`
+/// greater than the protocol maximum. Relays only decrement it, so a larger
+/// value means the field was crafted (loop / sybil hardening).
+pub fn valid_inbound_hops(hops_left: u8) -> bool {
+    hops_left <= RELAY_MAX_HOPS
 }
 
 /// Relay path: source → relay → destination
@@ -203,6 +218,11 @@ impl RelayVerifier {
     pub fn pin_key(&mut self, sender: &str, key_hex: &str) -> Result<(), String> {
         match self.key_pins.get(sender) {
             None => {
+                // Coarse anti-memory-DoS eviction before inserting a new pin.
+                if self.key_pins.len() >= MAX_RELAY_PINS {
+                    self.key_pins.clear();
+                    log::warn!("Relay key-pin table full; cleared (anti-memory-DoS)");
+                }
                 self.key_pins
                     .insert(sender.to_string(), key_hex.to_string());
                 Ok(())
@@ -212,17 +232,20 @@ impl RelayVerifier {
         }
     }
 
-    /// Admit or reject one relay message from `sender`.
-    /// `now` is the current unix time in seconds (injectable for tests).
+    /// Admit or reject one relay message, keyed by the originator's verified
+    /// identity public key (`key_hex`) rather than the spoofable `from_uid`.
+    /// This makes the nonce/rate quotas sybil-resistant: many fake uids
+    /// behind one identity key share a single quota. `now` is the current
+    /// unix time in seconds (injectable for tests).
     pub fn check(
         &mut self,
-        sender: &str,
+        key_hex: &str,
         nonce: u64,
         timestamp: u64,
         now: u64,
     ) -> Result<(), String> {
-        // 1. Replay: nonces must be strictly increasing per sender.
-        if let Some(&last) = self.last_nonce.get(sender) {
+        // 1. Replay: nonces must be strictly increasing per identity key.
+        if let Some(&last) = self.last_nonce.get(key_hex) {
             if nonce <= last {
                 return Err(format!("replayed nonce {} (last {})", nonce, last));
             }
@@ -233,18 +256,27 @@ impl RelayVerifier {
             return Err(format!("timestamp {} outside freshness window", timestamp));
         }
 
-        // 3. Rate limit per window.
-        let (window_start, count) = self.rate.entry(sender.to_string()).or_insert((now, 0));
-        if now - *window_start >= RELAY_RATE_WINDOW_SECS {
+        // 3. Rate limit per window, per identity key.
+        //    Coarse anti-memory-DoS eviction before inserting a new key.
+        if self.rate.len() >= MAX_RELAY_TRACKED {
+            self.rate.clear();
+            log::warn!("Relay rate table full; cleared (anti-memory-DoS)");
+        }
+        let (window_start, count) = self.rate.entry(key_hex.to_string()).or_insert((now, 0));
+        if now.abs_diff(*window_start) >= RELAY_RATE_WINDOW_SECS {
             *window_start = now;
             *count = 0;
         }
         if *count >= RELAY_MAX_PER_WINDOW {
-            return Err(format!("rate limit exceeded for {}", sender));
+            return Err(format!("rate limit exceeded for identity key {}", key_hex));
         }
         *count += 1;
 
-        self.last_nonce.insert(sender.to_string(), nonce);
+        if self.last_nonce.len() >= MAX_RELAY_TRACKED {
+            self.last_nonce.clear();
+            log::warn!("Relay nonce table full; cleared (anti-memory-DoS)");
+        }
+        self.last_nonce.insert(key_hex.to_string(), nonce);
         Ok(())
     }
 }
@@ -420,5 +452,26 @@ mod tests {
         assert!(v.pin_key("alice", "k1").is_ok()); // same key fine
         assert!(v.pin_key("alice", "k2").is_err()); // key change rejected
         assert!(v.pin_key("bob", "k2").is_ok()); // different sender fine
+    }
+
+    #[test]
+    fn test_relay_verifier_sybil_quota_shared_per_key() {
+        // Anti-sybil: many uids behind one identity key share one quota.
+        let mut v = RelayVerifier::new();
+        let key = "one_identity_key_hex";
+        for i in 0..RELAY_MAX_PER_WINDOW {
+            assert!(v.check(key, i as u64 + 1, 1000, 1000).is_ok());
+        }
+        // A 61st message under the same key is rejected — regardless of uid.
+        assert!(v.check(key, 1000, 1000, 1000).is_err());
+        // A different identity key has its own independent quota.
+        assert!(v.check("other_identity_key_hex", 1, 1000, 1000).is_ok());
+    }
+
+    #[test]
+    fn test_inbound_hops_guard() {
+        assert!(valid_inbound_hops(0));
+        assert!(valid_inbound_hops(RELAY_MAX_HOPS));
+        assert!(!valid_inbound_hops(RELAY_MAX_HOPS + 1));
     }
 }

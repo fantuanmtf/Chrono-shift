@@ -23,7 +23,7 @@ use std::collections::HashMap;
 use std::io;
 use std::sync::Mutex;
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
-use x25519_dalek::{PublicKey, StaticSecret};
+use x25519_dalek::{PublicKey, SharedSecret, StaticSecret};
 
 /// Maximum frame size accepted on the wire (handshake + data frames).
 const MAX_FRAME: usize = 65536;
@@ -95,6 +95,21 @@ fn hex_to_32(hex: &str) -> io::Result<[u8; 32]> {
         hex_decode(hex).ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "bad hex"))?;
     <[u8; 32]>::try_from(bytes)
         .map_err(|_| io::Error::new(io::ErrorKind::InvalidData, "bad key length"))
+}
+
+/// Derive the X25519 shared secret, rejecting non-contributory peer
+/// ephemeral keys (all-zero / low-order points). x25519-dalek 2.x marks such
+/// secrets via `SharedSecret::was_contributory()`; using one would let an
+/// attacker force a predictable session key.
+fn derive_shared(secret: &StaticSecret, peer_eph: &[u8; 32]) -> io::Result<SharedSecret> {
+    let shared = secret.diffie_hellman(&PublicKey::from(*peer_eph));
+    if !shared.was_contributory() {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "peer ephemeral key is not contributory (low-order point)",
+        ));
+    }
+    Ok(shared)
 }
 
 /// Send a JSON PeerMessage as a length-prefixed frame (handshake only).
@@ -169,6 +184,12 @@ pub async fn outbound_handshake<S: AsyncRead + AsyncWrite + Unpin>(
             ))
         }
     };
+    if !crate::validate_uid(&resp_uid) {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "invalid responder uid",
+        ));
+    }
     let resp_eph = hex_to_32(&resp_eph_hex)?;
 
     // Verify responder signature over (chal_eph || resp_eph || nonce).
@@ -194,7 +215,7 @@ pub async fn outbound_handshake<S: AsyncRead + AsyncWrite + Unpin>(
             }
         };
 
-    let shared = eph_secret.diffie_hellman(&PublicKey::from(resp_eph));
+    let shared = derive_shared(&eph_secret, &resp_eph)?;
     let master = crypto::derive_session_key(shared.as_bytes(), eph_pub.as_bytes(), &resp_eph);
     let dir_a = crypto::hkdf_expand32(&master, b"chrono-dir-a");
     let dir_b = crypto::hkdf_expand32(&master, b"chrono-dir-b");
@@ -230,6 +251,12 @@ pub async fn inbound_handshake<S: AsyncRead + AsyncWrite + Unpin>(
             ))
         }
     };
+    if !crate::validate_uid(&chal_uid) {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "invalid challenger uid",
+        ));
+    }
     let chal_eph = hex_to_32(&chal_eph_hex)?;
 
     // Verify the challenge signature over (eph_pub || nonce).
@@ -275,7 +302,7 @@ pub async fn inbound_handshake<S: AsyncRead + AsyncWrite + Unpin>(
     )
     .await?;
 
-    let shared = eph_secret.diffie_hellman(&PublicKey::from(chal_eph));
+    let shared = derive_shared(&eph_secret, &chal_eph)?;
     let master = crypto::derive_session_key(shared.as_bytes(), &chal_eph, eph_pub.as_bytes());
     let dir_a = crypto::hkdf_expand32(&master, b"chrono-dir-a");
     let dir_b = crypto::hkdf_expand32(&master, b"chrono-dir-b");
@@ -448,13 +475,23 @@ mod tests {
             tokio::time::timeout(Duration::from_secs(2), b_fut),
         );
         // Bob (the verifier) must reject the forged identity.
-        match b_res {
-            Ok(Ok(_)) => panic!("bob accepted impersonation"),
-            _ => {}
+        if let Ok(Ok(_)) = b_res {
+            panic!("bob accepted impersonation");
         }
         // Mallory must never end up with a working session.
         if let Ok(Ok(_)) = a_res {
             panic!("impersonator obtained a session");
         }
+    }
+
+    #[test]
+    fn test_low_order_point_rejected() {
+        // An all-zero public key is a low-order point: the resulting shared
+        // secret is non-contributory, and our guard must reject it so an
+        // attacker can't force a predictable session key.
+        let secret = StaticSecret::random_from_rng(OsRng);
+        let shared = secret.diffie_hellman(&PublicKey::from([0u8; 32]));
+        assert!(!shared.was_contributory());
+        assert!(derive_shared(&secret, &[0u8; 32]).is_err());
     }
 }

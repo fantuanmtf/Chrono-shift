@@ -2,7 +2,7 @@
 use ed25519_dalek::{SigningKey, VerifyingKey};
 use rand::rngs::OsRng;
 use rand::RngCore;
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 use sha2::{Digest, Sha256};
 use std::fs;
 use std::io::Write;
@@ -28,11 +28,19 @@ pub(crate) fn write_private_file(path: &Path, contents: &str) -> std::io::Result
     };
     file.write_all(contents.as_bytes())?;
     file.sync_all()?;
+    // Re-assert owner-only permissions after the write, so a pre-existing
+    // 0644 file is repaired even if it was not created by us (also covers any
+    // rename/truncate path that could drop the mode).
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let _ = fs::set_permissions(path, fs::Permissions::from_mode(0o600));
+    }
     Ok(())
 }
 
 /// User identity with Ed25519 keypair (HIGH-1/2: Drop zeroizes + file permissions)
-#[derive(Serialize, Deserialize)]
+#[derive(Deserialize)]
 pub struct Identity {
     pub uid: String,
     /// Ed25519 secret key (32 bytes, hex-encoded) — zeroized on Drop
@@ -57,8 +65,9 @@ impl Drop for Identity {
 impl Identity {
     /// Generate a new identity with a fresh Ed25519 keypair
     pub fn generate(uid: &str) -> Self {
-        let mut key_bytes = [0u8; 32];
-        OsRng.fill_bytes(&mut key_bytes);
+        // Zeroizing so the 32 raw seed bytes are wiped once the key is built.
+        let mut key_bytes = zeroize::Zeroizing::new([0u8; 32]);
+        OsRng.fill_bytes(&mut *key_bytes);
         let signing_key = SigningKey::from_bytes(&key_bytes);
         let verifying_key = signing_key.verifying_key();
         Self {
@@ -76,6 +85,12 @@ impl Identity {
     pub fn load_or_generate(data_dir: &Path, uid: &str) -> Self {
         let keys_dir = data_dir.join("keys");
         fs::create_dir_all(&keys_dir).ok();
+        // Best-effort: keep the keys directory owner-only too.
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let _ = fs::set_permissions(&keys_dir, fs::Permissions::from_mode(0o700));
+        }
         let path = keys_dir.join("identity.json");
 
         if let Ok(json) = fs::read_to_string(&path) {
@@ -85,7 +100,15 @@ impl Identity {
         }
 
         let id = Self::generate(uid);
-        if let Ok(json) = serde_json::to_string_pretty(&id) {
+        // Hand-built JSON: Identity is intentionally NOT Serialize so the
+        // secret key cannot be accidentally serialized elsewhere.
+        let value = serde_json::json!({
+            "uid": id.uid,
+            "secret_hex": id.secret_hex,
+            "public_hex": id.public_hex,
+            "created": id.created,
+        });
+        if let Ok(json) = serde_json::to_string_pretty(&value) {
             // FIX: create with mode 0600 from the start (was fs::write → 0644)
             let _ = write_private_file(&path, &json);
         }
@@ -96,8 +119,21 @@ impl Identity {
     pub fn save(&self, data_dir: &Path) {
         let keys_dir = data_dir.join("keys");
         fs::create_dir_all(&keys_dir).ok();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let _ = fs::set_permissions(&keys_dir, fs::Permissions::from_mode(0o700));
+        }
         let path = keys_dir.join("identity.json");
-        if let Ok(json) = serde_json::to_string_pretty(self) {
+        // Hand-built JSON: Identity deliberately does NOT derive Serialize, so
+        // the secret key can only be persisted here (never logged or sent).
+        let value = serde_json::json!({
+            "uid": self.uid,
+            "secret_hex": self.secret_hex,
+            "public_hex": self.public_hex,
+            "created": self.created,
+        });
+        if let Ok(json) = serde_json::to_string_pretty(&value) {
             // FIX: single atomic-ish write with 0600 at creation time,
             // no chmod-after-write window.
             let _ = write_private_file(&path, &json);
@@ -106,15 +142,16 @@ impl Identity {
 
     /// Get the verifying (public) key
     pub fn public_key(&self) -> Option<VerifyingKey> {
-        let bytes = hex_decode(&self.public_hex)?;
-        let arr: [u8; 32] = bytes.try_into().ok()?;
+        let bytes = zeroize::Zeroizing::new(hex_decode(&self.public_hex)?);
+        let arr: [u8; 32] = bytes.as_slice().try_into().ok()?;
         VerifyingKey::from_bytes(&arr).ok()
     }
 
     /// Get the signing (secret) key
     pub fn signing_key(&self) -> Option<SigningKey> {
-        let bytes = hex_decode(&self.secret_hex)?;
-        let arr: [u8; 32] = bytes.try_into().ok()?;
+        // Zeroizing so the temporary decoded secret bytes are wiped on drop.
+        let bytes = zeroize::Zeroizing::new(hex_decode(&self.secret_hex)?);
+        let arr: [u8; 32] = bytes.as_slice().try_into().ok()?;
         Some(SigningKey::from_bytes(&arr))
     }
 
@@ -189,7 +226,7 @@ mod tests {
     fn test_generate_and_fingerprint() {
         let id = Identity::generate("alice");
         assert_eq!(id.uid, "alice");
-        assert!(id.fingerprint().len() > 0);
+        assert!(!id.fingerprint().is_empty());
         assert!(id.public_key().is_some());
         assert!(id.signing_key().is_some());
     }
@@ -214,6 +251,31 @@ mod tests {
         let loaded = Identity::load_or_generate(&tmp, "carol");
         assert_eq!(loaded.public_hex, id.public_hex);
         assert_eq!(loaded.fingerprint(), id.fingerprint());
+        std::fs::remove_dir_all(tmp).ok();
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn test_write_private_file_mode_0600() {
+        use std::os::unix::fs::PermissionsExt;
+        let tmp = std::env::temp_dir().join("chrono_test_id_perm");
+        std::fs::create_dir_all(&tmp).ok();
+        let path = tmp.join("identity.json");
+
+        // New file must be created 0600.
+        write_private_file(&path, "{}").unwrap();
+        let mode = std::fs::metadata(&path).unwrap().permissions().mode() & 0o777;
+        assert_eq!(mode, 0o600, "new private file must be 0600, got {mode:o}");
+
+        // A pre-existing 0644 file must be repaired to 0600.
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o644)).unwrap();
+        write_private_file(&path, "{}").unwrap();
+        let mode = std::fs::metadata(&path).unwrap().permissions().mode() & 0o777;
+        assert_eq!(
+            mode, 0o600,
+            "existing 0644 file must be repaired, got {mode:o}"
+        );
+
         std::fs::remove_dir_all(tmp).ok();
     }
 }

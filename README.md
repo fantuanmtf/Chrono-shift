@@ -1,8 +1,8 @@
-# Chrono-shift v0.0.8.3
+# Chrono-shift v0.0.9
 
 **DC-Net + F2F 信任网 · 匿名代理网络 · 纯 Rust · Web 控制台**
 
-36 源文件 · ~6800 行 Rust · 115 tests / 0 failures · 零 C/C++ 依赖
+36 源文件 · ~6800 行 Rust · 164 tests / 0 failures · 零 C/C++ 依赖
 
 ## 核心特性
 
@@ -17,7 +17,7 @@
 - **WAL 持久化** — Write-Ahead Log，原子 checkpoint，崩溃恢复
 - **可插拔传输** — Direct / Tor SOCKS5 / obfs4 / WebTunnel
 - **IPv6 双栈** — `[::]` 绑定自动 fallback IPv4
-- **协议过滤** — 仅允许 IRC/BBS 文本协议，拒绝 HTTP/二进制/大文件
+- **协议过滤** — 仅允许 IRC/BBS 文本协议，拒绝 HTTP/二进制/大文件（`protocol_filter` 模块；daemon 侧接线状态见 [docs/TRANSPORT.md](docs/TRANSPORT.md)）
 
 ## 加密体系
 
@@ -31,6 +31,7 @@
 | DC-Net XOR | 信息论安全 | N 方共享密钥 XOR 广播 |
 | 洗牌承诺 | SHA-256 | Merkle 树根，揭示后验证 |
 | 随机数 | OsRng | FIPS 140-2 |
+| DH 校验 | X25519 `was_contributory` | 拒绝低阶点/全零共享密钥 |
 | 内存安全 | zeroize | Drop 时自动清零 |
 
 ## 快速开始
@@ -97,6 +98,9 @@ client/security/rust_core/src/
 | `/api/services` | GET | 活跃代理列表 |
 | `/api/connect` | POST | 连接节点 `{"addr":"IP:9000","uid":"name"}` |
 
+> v0.0.9 起所有 `/api/*` 需要 `Authorization: Bearer <token>`；token 存于
+> `data/keys/web_token`（0600），启动日志会打印该文件路径。控制台页面首次打开会提示输入。
+
 ## 下载
 
 预编译包发布在 [GitHub Releases](https://github.com/fantuanmtf/Chrono-shift/releases)
@@ -137,6 +141,7 @@ bash scripts/verify_release.sh
 
 | 版本 | 变更 |
 |------|------|
+| v0.0.9 | 安全加固：X25519 低阶点校验、认证门控（未认证会话仅 Ping/Pong）、Web Token 认证+防 DNS rebinding、中继抗女巫+hops 入站强制、资源上限（连接/队列/写缓冲）、XSS 与 uid 校验、协议过滤 panic 修复、敏感文件权限、存储/FFI 加固、cargo-audit CI 门禁 |
 | v0.0.8.3 | 移除 Windows 支持：Linux 单平台、删除 installer/windows-sys/Windows CI 产物 |
 | v0.0.8.2 | v8.1 daemon + P0-P4 安全合流：真 X25519 会话加密、边密钥 DC-Net 份额、WoT 定点信任、中继加固（签名/限速/TOFU/防环）、WAL 接线、历史清理重置 |
 | v8.1 | Web 控制台、废 CLI、单二进制、纯代理架构 |

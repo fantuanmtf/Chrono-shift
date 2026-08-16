@@ -3,6 +3,9 @@
 //! Prevents network abuse by restricting proxy traffic to text-based
 //! protocols (IRC, BBS). Rejects binary, HTTP, WebSocket, and oversized
 //! messages that could degrade DC-Net performance.
+//!
+//! NOTE: 当前 daemon 尚未把本过滤器接入代理数据通路——此处仅提供库函数与单元测试，
+//! 并不构成运行时防护的安全声明。
 
 /// Recognized text protocols
 #[derive(Debug, Clone, PartialEq)]
@@ -108,7 +111,10 @@ fn looks_like_irc(text: &str) -> bool {
         }
     }
     // Also accept server numerics (3 digits)
-    if text.len() >= 3 && text[..3].chars().all(|c| c.is_ascii_digit()) {
+    if text
+        .get(..3)
+        .is_some_and(|s| s.chars().all(|c| c.is_ascii_digit()))
+    {
         return true;
     }
     false
@@ -200,5 +206,16 @@ mod tests {
         let result = filter.check(b"random text data");
         assert!(result.is_ok());
         assert_eq!(result.unwrap(), Protocol::Unknown);
+    }
+
+    #[test]
+    fn test_looks_like_irc_multibyte_no_panic() {
+        // 两个 e 加重音字符（4 字节）：text[..3] 会落在非字符边界并 panic。
+        assert!(!looks_like_irc("éé"));
+    }
+
+    #[test]
+    fn test_looks_like_irc_numeric_returns_true() {
+        assert!(looks_like_irc("123 example"));
     }
 }

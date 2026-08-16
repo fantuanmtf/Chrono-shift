@@ -38,12 +38,11 @@ impl Transport {
         match self {
             Transport::Direct => "Direct TCP".to_string(),
             Transport::Tor { socks5_addr } => format!("Tor SOCKS5 → {}", socks5_addr),
-            Transport::Obfs4 {
-                bridge_line,
-                socks5_addr,
-            } => format!("obfs4 → {} (via {})", bridge_line, socks5_addr),
-            Transport::WebTunnel { url, socks5_addr } => {
-                format!("WebTunnel → {} (via {})", url, socks5_addr)
+            Transport::Obfs4 { socks5_addr, .. } => {
+                format!("Obfs4 (bridge configured) via {}", socks5_addr)
+            }
+            Transport::WebTunnel { socks5_addr, .. } => {
+                format!("WebTunnel (url hidden) via {}", socks5_addr)
             }
         }
     }
@@ -77,7 +76,16 @@ pub fn set_transport(t: Transport, data_dir: &str) {
         .join("transport.json");
     fs::create_dir_all(path.parent().unwrap()).ok();
     if let Ok(json) = serde_json::to_string_pretty(&config) {
-        fs::write(&path, json).ok();
+        // 0600 owner-only write: transport.json may contain an obfs4
+        // bridge_line or WebTunnel secret. Report failures instead of
+        // silently dropping them (.ok()).
+        if let Err(e) = crate::identity::write_private_file(&path, &json) {
+            log::error!(
+                "failed to persist transport config to {}: {}",
+                path.display(),
+                e
+            );
+        }
     }
     *TRANSPORT.lock().unwrap() = Some(config);
 }
@@ -129,5 +137,26 @@ mod tests {
         let loaded = load_transport(tmp.to_str().unwrap());
         assert_eq!(loaded.name(), "obfs4");
         std::fs::remove_dir_all(tmp).ok();
+    }
+
+    #[test]
+    fn test_description_redacts_secrets() {
+        let obfs = Transport::Obfs4 {
+            bridge_line: "obfs4 1.2.3.4:443 SECRETKEY".into(),
+            socks5_addr: "127.0.0.1:9050".into(),
+        };
+        let d = obfs.description();
+        assert!(d.contains("Obfs4 (bridge configured)"));
+        assert!(!d.contains("SECRETKEY"));
+        assert!(!d.contains("1.2.3.4"));
+
+        let wt = Transport::WebTunnel {
+            url: "https://secret.example/bridge".into(),
+            socks5_addr: "127.0.0.1:9050".into(),
+        };
+        let d = wt.description();
+        assert!(d.contains("WebTunnel (url hidden)"));
+        assert!(!d.contains("secret.example"));
+        assert!(!d.contains("/bridge"));
     }
 }

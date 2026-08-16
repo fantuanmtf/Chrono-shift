@@ -1,4 +1,4 @@
-# Chrono-shift v0.0.8.3 安全说明
+# Chrono-shift v0.0.9 安全说明
 
 ## 安全架构（与实现一致）
 
@@ -11,7 +11,12 @@
 | 中继 | Ed25519 签名 + 单调 nonce + 时间窗 + 限速 + TOFU 密钥固定 | 防重放/过期/放大/环回 |
 | 存储 | WAL + 原子 checkpoint | 快照 tmp+fsync+rename；敏感文件 0600 |
 | 随机数 | OsRng | 系统 CSPRNG |
-| 内存 | zeroize | 密钥析构清零 |
+| 内存 | zeroize | 密钥析构清零 + 临时密钥副本 Zeroizing |
+| DH | X25519 contributory 校验 | 拒绝低阶点/全零共享密钥,防握手被动解密 |
+| 连接管理 | 认证门控 + 全局连接上限 | 未认证会话仅放行 Ping/Pong;TOFU 仅钉已验证公钥;上限 256 |
+| Web 控制台 | Bearer Token + Host/Origin 校验 | token 存 0600 文件;防 DNS rebinding/CSRF;安全响应头 |
+| 中继 | 按身份公钥记账 + 容量上限 | 抗女巫限速;hops_left 入站强制 ≤8;表有界 |
+| 队列 | 有界入站通道 | 洪水不再无界囤积内存 |
 
 ## 威胁模型
 
@@ -48,3 +53,6 @@
 - v7.6 及之前：DC-Net 份额由公开信息派生（假 DH）→ 已在 P1/P2 修复；
 - v8.1：会话密钥由公钥派生（假加密）+ 数据路径明文 JSON → 已在 v0.0.8.2 修复；
 - 2026-08 代码审查：web 控制台 CORS 通配符、无界请求行/body → 已修复。
+- 2026-08-16 全量审计：X25519 低阶点未校验、握手认证结果被丢弃、Web 控制台无认证
+  且可被 DNS rebinding 驱动、中继限速可被女巫绕过、入站队列无界、存储型 XSS、
+  密钥文件权限修复缺口等 → 已在 v0.0.9 修复（详见 plans/v0.0.9_security_hardening_plan.md）。

@@ -189,7 +189,7 @@ mod tests {
     fn test_wrong_message_fails_verification() {
         let mut sc = ShuffleCommitment::new(1, 3);
         let slot = sc.submit(&[1, 2, 3], b"test message");
-        let pt = sc.decrypt_slot(&slot).unwrap();
+        let _pt = sc.decrypt_slot(&slot).unwrap();
         assert!(!sc.verify(&slot, b"wrong message"));
     }
 

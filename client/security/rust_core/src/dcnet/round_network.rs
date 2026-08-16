@@ -550,7 +550,7 @@ mod tests {
         assert_eq!(rc.shares_received["alice"], vec![1u8; 256]);
 
         // Length mismatch still rejected.
-        assert!(rc.submit_share("bob", &vec![0u8; 128]).is_err());
+        assert!(rc.submit_share("bob", &[0u8; 128]).is_err());
         rc.submit_share("bob", &vec![3u8; 256]).unwrap();
         assert!(rc.is_complete());
     }

@@ -15,6 +15,11 @@ use std::io::{BufRead, BufReader, Write};
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
+/// Maximum WAL size we will replay at startup (64 MiB). A log larger than
+/// this is treated as corrupt/attacker-grown and skipped, falling back to
+/// the last snapshot only.
+const MAX_WAL_BYTES: u64 = 64 * 1024 * 1024;
+
 /// WAL operation — each records a state mutation for replay
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "op")]
@@ -147,6 +152,20 @@ impl WalStore {
     /// Called once at startup to recover from crashes.
     pub fn replay(&self) -> Vec<WalOperation> {
         let mut ops = Vec::new();
+        // Bound the replay: skip a WAL that exceeds MAX_WAL_BYTES rather than
+        // reading unbounded attacker-grown input. Trade-off: any valid ops
+        // past the limit are lost and we fall back to the last snapshot only.
+        if let Ok(meta) = fs::metadata(&self.log_path) {
+            if meta.len() > MAX_WAL_BYTES {
+                log::error!(
+                    "WAL {} is {} bytes (over {} byte limit); skipping replay",
+                    self.log_path.display(),
+                    meta.len(),
+                    MAX_WAL_BYTES
+                );
+                return ops;
+            }
+        }
         if let Ok(file) = File::open(&self.log_path) {
             let reader = BufReader::new(file);
             // map_while: stop at the first I/O error (flatten() could spin
@@ -203,7 +222,11 @@ impl WalStore {
         if renamed.is_err() {
             let _ = fs::remove_file(&self.state_path);
             if fs::rename(&tmp_path, &self.state_path).is_err() {
-                fs::write(&self.state_path, &json)?;
+                // Fallback: direct write (rename over existing failed). This
+                // path holds plaintext PSKs (edge keys), so create with
+                // owner-only permissions and fsync instead of fs::write
+                // (which would leave 0644 and skip the sync).
+                crate::identity::write_private_file(&self.state_path, &json)?;
                 let _ = fs::remove_file(&tmp_path);
             }
         }
@@ -429,6 +452,31 @@ mod tests {
             }
         }
 
+        fs::remove_dir_all(&tmp).ok();
+    }
+
+    #[test]
+    fn test_wal_replay_skips_oversized() {
+        let tmp = std::env::temp_dir().join("chrono_test_wal_oversize");
+        fs::create_dir_all(&tmp).unwrap();
+
+        {
+            let mut wal = WalStore::open(&tmp, 100).unwrap();
+            wal.append(&WalOperation::SetUid {
+                uid: "alice".into(),
+            })
+            .unwrap();
+            drop(wal);
+            // Blow the WAL past MAX_WAL_BYTES (sparse file, no real 64 MiB).
+            let f = File::create(tmp.join("wal.log")).unwrap();
+            f.set_len(MAX_WAL_BYTES + 1).unwrap();
+        }
+
+        let wal = WalStore::open(&tmp, 100).unwrap();
+        let ops = wal.replay();
+        assert!(ops.is_empty(), "oversized WAL must be skipped");
+
+        drop(wal);
         fs::remove_dir_all(&tmp).ok();
     }
 }
